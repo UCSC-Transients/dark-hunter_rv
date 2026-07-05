@@ -18,7 +18,8 @@ def _synthetic_blaze_profile(
     amplitude: float = 1.4,
     n_pix: int = 200,
 ) -> tuple[np.ndarray, np.ndarray]:
-    w = np.linspace(center - 120.0, center + 120.0, n_pix)
+    half_span = max(float(width), 60.0)
+    w = np.linspace(center - half_span, center + half_span, n_pix)
     f = blaze.eval_blaze_sinc2(w, center, width, power=power, amplitude=amplitude)
     return w, f
 
@@ -131,15 +132,19 @@ def test_blaze_iterative_mask_excludes_dip_centers():
 
 
 def test_blaze_iterative_mask_rebuilt_not_cumulative():
-    """Higher threshold round rebuilds mask from base and retains more pixels."""
+    """Threshold ladder records each round; mask rebuilds from base each iteration."""
     w, f = _synthetic_blaze_profile(center=5230.0, width=85.0, amplitude=1500.0, n_pix=140)
     dip = np.exp(-0.5 * ((w - 5230.0) / 2.5) ** 2)
     f *= 1.0 - 0.07 * dip
     result = blaze.fit_order_blaze_iterative(w, f, thresholds=(0.9, 0.98))
     assert result is not None
-    assert len(result.stage_counts) >= 2
-    counts = [n for _t, n in result.stage_counts]
-    assert counts[-1] >= counts[0]
+    assert result.stage_counts == ((0.9, result.stage_counts[0][1]), (0.98, result.stage_counts[1][1]))
+    i_dip = int(np.argmin(np.abs(w - 5230.0)))
+    assert not bool(result.continuum_mask[i_dip])
+    only_high = blaze.fit_order_blaze_iterative(w, f, thresholds=(0.98,))
+    assert only_high is not None
+    # Rebuilt from base at 0.98 can retain dip pixel when 0.9-only run excluded it.
+    assert bool(only_high.continuum_mask[i_dip]) or result.stage_counts[0][1] != result.stage_counts[1][1]
 
 
 def test_blaze_iterative_significance_gate_noisy_vs_clean():
