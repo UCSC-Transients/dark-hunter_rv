@@ -87,6 +87,19 @@ HOT_SPLINE_EXCLUDE_NEAR_LINES_WIDTH = 78.0
 MASK_CONTINUUM_MODE = "sinc_blaze_only"
 TEMPLATE_CONTINUUM_MODE = "sinc_blaze"
 
+# Iterative sinc² blaze fit: S/N-significance mask rebuilt each round at these thresholds.
+BLAZE_ITERATIVE_THRESHOLDS = (0.9, 0.92, 0.94, 0.95, 0.96, 0.97, 0.98)
+BLAZE_ITERATIVE_NSIGMA = 3.5
+BLAZE_ITERATIVE_MIN_PIXELS = 18
+# Post-iteration: grow excluded line regions up to this many pixels per side (pull symmetry).
+BLAZE_MASK_EXPAND_MAX_PIXELS = 8
+
+# Legacy stellar-mask knobs (CCF / validation); not used by iterative blaze fit.
+BLAZE_STELLAR_MASK_NAME = "G8_espresso"
+BLAZE_STELLAR_MASK_HALF_WIDTH_A = 3.0
+BLAZE_STELLAR_MASK_MIN_STRENGTH = 0.15
+BLAZE_STELLAR_MASK_MAX_LINES_PER_SPAN = 25
+
 # Spline continuum: rolling upper-envelope estimate (percentile_filter) so noisy orders track the
 # continuum **top** instead of a mix of lines+noise. Second pass smooths the envelope slightly.
 # Floor ties final spline to the envelope so fits cannot run through the spectrum mid-level.

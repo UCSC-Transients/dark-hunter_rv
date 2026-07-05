@@ -74,6 +74,9 @@ def test_fit_order_blaze_recovers_shape():
         profiles,
         echelle_order=42,
         rest_lines=[],
+        mask_wave=np.array([]),
+        mask_strength=np.array([]),
+        use_stellar_mask=False,
     )
     assert model is not None
     assert model.echelle_order == 42
@@ -85,7 +88,14 @@ def test_fit_order_blaze_recovers_shape():
 def test_order_blaze_model_roundtrip(tmp_path: Path):
     w, f = _synthetic_blaze_profile()
     profiles = [(w, f), (w, f * 1.05), (w, f * 0.95)]
-    model = blaze.fit_order_blaze_from_profiles(profiles, echelle_order=7, rest_lines=[])
+    model = blaze.fit_order_blaze_from_profiles(
+        profiles,
+        echelle_order=7,
+        rest_lines=[],
+        mask_wave=np.array([]),
+        mask_strength=np.array([]),
+        use_stellar_mask=False,
+    )
     assert model is not None
     path = tmp_path / "blaze.json"
     model.save(path)
@@ -96,10 +106,190 @@ def test_order_blaze_model_roundtrip(tmp_path: Path):
     assert data["model"] == "sinc2"
 
 
-def test_correct_flux_removes_blaze_envelope():
+def test_uniform_order_grid_avoids_unique_inflation():
+    w_base = np.linspace(5195.0, 5278.0, 84)
+    profiles = [
+        (w_base + 0.01 * i, np.ones_like(w_base))
+        for i in range(9)
+    ]
+    grid = blaze._uniform_order_grid(profiles)
+    unique_grid = np.unique(np.concatenate([w for w, _ in profiles]))
+    assert grid.size < unique_grid.size // 4
+    assert grid.size == pytest.approx(84, abs=3)
+
+
+def test_blaze_iterative_mask_excludes_dip_centers():
+    """Synthetic sinc blaze + shallow dip: iterative mask excludes line core."""
+    w = np.linspace(5200.0, 5280.0, 161)
+    f = blaze.eval_blaze_sinc2(w, 5235.0, 80.0, power=2.0, amplitude=1500.0)
+    dip_center = 5235.0
+    core = np.abs(w - dip_center) < 2.0
+    f[core] *= 0.55
+    mask = blaze.blaze_fit_continuum_mask(w, f, rest_lines=[])
+    assert not bool(mask[np.argmin(np.abs(w - dip_center))])
+    assert bool(mask[np.argmin(np.abs(w - 5205.0))])
+
+
+def test_blaze_iterative_mask_rebuilt_not_cumulative():
+    """Higher threshold round rebuilds mask from base and retains more pixels."""
+    w, f = _synthetic_blaze_profile(center=5230.0, width=85.0, amplitude=1500.0, n_pix=140)
+    dip = np.exp(-0.5 * ((w - 5230.0) / 2.5) ** 2)
+    f *= 1.0 - 0.07 * dip
+    result = blaze.fit_order_blaze_iterative(w, f, thresholds=(0.9, 0.98))
+    assert result is not None
+    assert len(result.stage_counts) >= 2
+    counts = [n for _t, n in result.stage_counts]
+    assert counts[-1] >= counts[0]
+
+
+def test_blaze_iterative_significance_gate_noisy_vs_clean():
+    """Shallow dip masked on clean data; same depth kept on noisy data if not N-sigma significant."""
+    w = np.linspace(5195.0, 5278.0, 160)
+    f_clean = blaze.eval_blaze_sinc2(w, 5235.0, 80.0, power=2.0, amplitude=1500.0)
+    dip = np.exp(-0.5 * ((w - 5225.0) / 2.0) ** 2)
+    f_clean *= 1.0 - 0.08 * dip
+
+    rng = np.random.default_rng(0)
+    f_noisy = f_clean * (1.0 + 0.12 * rng.standard_normal(w.size))
+    f_noisy = np.maximum(f_noisy, 1.0)
+
+    mask_clean = blaze.blaze_fit_continuum_mask(
+        w, f_clean, rest_lines=[], thresholds=(0.98,)
+    )
+    mask_noisy = blaze.blaze_fit_continuum_mask(
+        w, f_noisy, rest_lines=[], thresholds=(0.98,)
+    )
+    i_dip = int(np.argmin(np.abs(w - 5225.0)))
+    assert not bool(mask_clean[i_dip])
+    assert bool(mask_noisy[i_dip])
+
+
+def test_blaze_iterative_fit_recovers_width_with_dips():
+    """Three Gaussian dips on blaze envelope: final width near truth."""
+    true_width = 85.0
+    w, f_env = _synthetic_blaze_profile(center=5230.0, width=true_width, amplitude=1500.0, n_pix=140)
+    f = f_env.copy()
+    for center in (5188.0, 5225.0, 5262.0):
+        dip = np.exp(-0.5 * ((w - center) / 2.5) ** 2)
+        f *= 1.0 - 0.35 * dip
+    result = blaze.fit_order_blaze_iterative(w, f)
+    assert result is not None
+    assert result.width_angstrom == pytest.approx(true_width, rel=0.2)
+    for center in (5188.0, 5225.0, 5262.0):
+        assert not bool(result.continuum_mask[np.argmin(np.abs(w - center))])
+
+
+def test_blaze_stellar_mask_excludes_mask_lines_in_span():
+    w = np.linspace(5195.0, 5278.0, 120)
+    mw = np.array([5200.0, 5250.0, 6000.0])
+    ms = np.array([0.5, 0.4, 0.9])
+    mask = blaze.blaze_stellar_mask(
+        w,
+        mw,
+        ms,
+        half_width_angstrom=5.0,
+        min_strength=0.1,
+        max_lines_per_span=10,
+    )
+    assert not bool(mask[np.argmin(np.abs(w - 5200.0))])
+    assert not bool(mask[np.argmin(np.abs(w - 5250.0))])
+    assert bool(mask[np.argmin(np.abs(w - 5225.0))])
+
+
+def test_blaze_fit_continuum_mask_iterative_excludes_absorption():
+    """Iterative threshold ladder excludes shallow absorption on blaze envelope."""
+    w = np.linspace(5195.0, 5278.0, 120)
+    f = blaze.eval_blaze_sinc2(w, 5235.0, 80.0, power=2.0, amplitude=1500.0)
+    f[np.abs(w - 5220.0) < 1.2] *= 0.82
+    mask = blaze.blaze_fit_continuum_mask(w, f, rest_lines=[])
+    assert not bool(mask[np.argmin(np.abs(w - 5220.0))])
+    min_pix = int(getattr(blaze.config, "BLAZE_ITERATIVE_MIN_PIXELS", 18))
+    assert int(np.sum(mask)) >= min_pix
+    assert int(np.sum(mask)) < w.size
+
+
+def test_fit_order_blaze_ignores_metal_lines_on_clean_order():
+    """Clean orders (no STRONG_LINES in span): iterative mask excludes metal dips before fit."""
+    w, f_env = _synthetic_blaze_profile(center=5230.0, width=85.0, amplitude=1500.0, n_pix=140)
+    f = f_env.copy()
+    dip_centers = (5188.0, 5225.0, 5262.0)
+    for center in dip_centers:
+        dip = np.exp(-0.5 * ((w - center) / 2.5) ** 2)
+        f *= 1.0 - 0.35 * dip
+
+    profiles = [(w, f * amp) for amp in (0.98, 1.0, 1.02, 0.99, 1.01)]
+    model = blaze.fit_order_blaze_from_profiles(
+        profiles,
+        echelle_order=35,
+        rest_lines=[],
+        line_mask_half_width=22.0,
+    )
+    assert model is not None
+    assert model.center_angstrom == pytest.approx(5230.0, abs=8.0)
+    assert model.width_angstrom == pytest.approx(85.0, rel=0.2)
+
+    mask = blaze.blaze_fit_continuum_mask(w, f, rest_lines=[])
+    for center in dip_centers:
+        assert not bool(mask[np.argmin(np.abs(w - center))])
+    assert int(np.sum(mask)) > 18
+
+
+def test_blaze_mask_expansion_improves_pull_symmetry():
+    """Post-iteration dilation grows line mask when continuum pulls have a <1 tail."""
+    w = np.linspace(5200.0, 5280.0, 161)
+    f = blaze.eval_blaze_sinc2(w, 5235.0, 80.0, power=2.0, amplitude=1500.0)
+    center = 5235.0
+    narrow = np.exp(-0.5 * ((w - center) / 2.0) ** 2)
+    broad = np.exp(-0.5 * ((w - center) / 6.0) ** 2)
+    f *= 1.0 - 0.45 * narrow
+    f *= 1.0 - 0.08 * broad
+
+    no_expand = blaze.fit_order_blaze_iterative(w, f, max_mask_expand=0)
+    with_expand = blaze.fit_order_blaze_iterative(w, f, max_mask_expand=8)
+    assert no_expand is not None and with_expand is not None
+    assert with_expand.mask_expand_pixels >= 1
+    assert int(np.sum(with_expand.continuum_mask)) < int(np.sum(no_expand.continuum_mask))
+
+    norm_no = blaze._blaze_normalized_flux(
+        w,
+        f,
+        no_expand.continuum_mask,
+        center=no_expand.center_angstrom,
+        width=no_expand.width_angstrom,
+        power=no_expand.power,
+        amplitude=no_expand.amplitude,
+    )
+    norm_yes = blaze._blaze_normalized_flux(
+        w,
+        f,
+        with_expand.continuum_mask,
+        center=with_expand.center_angstrom,
+        width=with_expand.width_angstrom,
+        power=with_expand.power,
+        amplitude=with_expand.amplitude,
+    )
+    score_no = blaze._pull_distribution_consistency_score(norm_no[no_expand.continuum_mask] - 1.0)
+    score_yes = blaze._pull_distribution_consistency_score(norm_yes[with_expand.continuum_mask] - 1.0)
+    assert score_yes <= score_no + 0.05
+
+
+def test_blaze_fit_continuum_mask_keeps_hbeta_wings():
+    w = np.linspace(4800.0, 4920.0, 300)
+    f = blaze.eval_blaze_sinc2(w, 4900.0, 90.0, power=2.0, amplitude=1200.0)
+    core = np.abs(w - blaze.HB_REST_A) < 8.0
+    f[core] *= 0.4
+    mask = blaze.blaze_fit_continuum_mask(
+        w,
+        f,
+        rest_lines=blaze.strong_lines_in_span(float(w.min()), float(w.max())),
+        half_width_angstrom=22.0,
+    )
+    assert bool(mask[np.argmin(np.abs(w - (blaze.HB_REST_A + 35.0)))])
+    assert not bool(mask[np.argmin(np.abs(w - blaze.HB_REST_A))])
+
     w, f = _synthetic_blaze_profile(amplitude=2.0)
     profiles = [(w, f), (w, f * 1.02), (w, f * 0.98)]
-    model = blaze.fit_order_blaze_from_profiles(profiles, echelle_order=1, rest_lines=[])
+    model = blaze.fit_order_blaze_from_profiles(profiles, echelle_order=1, rest_lines=[], mask_wave=np.array([]), mask_strength=np.array([]), use_stellar_mask=False)
     assert model is not None
     fc = model.correct_flux(w, f)
     assert float(np.nanmedian(fc)) == pytest.approx(2.0, rel=0.08)

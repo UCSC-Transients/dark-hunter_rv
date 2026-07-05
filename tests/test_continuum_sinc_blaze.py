@@ -32,6 +32,21 @@ def test_sinc_blaze_only_flattens_median():
     assert float(np.nanmedian(nf)) == pytest.approx(1.0, abs=0.05)
 
 
+def test_sinc_blaze_only_uses_continuum_mask_for_median():
+    model = _mock_blaze_order()
+    w = np.linspace(model.center_angstrom - 90, model.center_angstrom + 90, 150)
+    raw = blaze.eval_blaze_sinc2(
+        w, model.center_angstrom, model.width_angstrom, amplitude=3.0
+    )
+    dip = np.exp(-0.5 * ((w - model.center_angstrom) / 2.0) ** 2)
+    raw *= 1.0 - 0.4 * dip
+    mask = blaze.continuum_mask_for_blaze_model(w, raw, model)
+    _, nf, _ = blaze.normalize_order_sinc_blaze_only(w, raw, np.ones_like(raw), model)
+    cont_pulls = nf - 1.0
+    assert int(np.sum(mask)) < w.size
+    assert float(np.nanmedian(cont_pulls)) == pytest.approx(0.0, abs=0.08)
+
+
 def test_sinc_blaze_applies_before_spline():
     model = _mock_blaze_order(center=5100.0)
     w = np.linspace(5010, 5190, 160)
