@@ -229,26 +229,36 @@ def _fit_continuum_sinc_blaze(
     num_knots=5,
     order=3,
     exclude_near_lines_width: float | None = None,
+    base_mask=None,
+    fixed_line_mask=None,
+    fixed_cont_mask=None,
+    cr_mask=None,
+    fit_model="sinc2",
+    poly_order=2,
 ):
     """Divide by calibrated sinc² blaze; optionally spline on blaze-corrected flux."""
-    from darkhunter_rv.blaze import OrderBlazeModel
+    from darkhunter_rv.blaze import OrderBlazeModel, normalize_order_sinc_blaze_only
 
     if not isinstance(blaze_model, OrderBlazeModel):
         raise TypeError("blaze_model must be OrderBlazeModel")
+    if continuum_mode == "sinc_blaze_only":
+        return normalize_order_sinc_blaze_only(
+            wavelength,
+            flux,
+            eflux,
+            blaze_model,
+            base_mask=base_mask,
+            fixed_line_mask=fixed_line_mask,
+            fixed_cont_mask=fixed_cont_mask,
+            cr_mask=cr_mask,
+            fit_model=fit_model,
+            poly_order=poly_order,
+        )
     wavelength = np.array(wavelength, float)
     flux = np.array(flux, float)
     eflux = np.array(eflux, float)
     fc = blaze_model.correct_flux(wavelength, flux)
     ec = blaze_model.correct_flux(wavelength, eflux)
-    good = np.isfinite(fc) & (fc > 0)
-    level = float(np.nanmedian(fc[good])) if np.any(good) else float(np.nanmedian(fc))
-    if not np.isfinite(level) or level <= 0:
-        level = 1.0
-    if continuum_mode == "sinc_blaze_only":
-        norm_flux = fc / level
-        norm_eflux = ec / level
-        final_mask = np.isfinite(norm_flux) & (norm_flux > 0)
-        return wavelength[final_mask], norm_flux[final_mask], norm_eflux[final_mask]
     return _fit_continuum_spline(
         wavelength,
         fc,
@@ -269,6 +279,12 @@ def fit_continuum(
     exclude_near_lines_width: float | None = None,
     blaze_model=None,
     echelle_order: int | None = None,
+    base_mask=None,
+    fixed_line_mask=None,
+    fixed_cont_mask=None,
+    cr_mask=None,
+    fit_model="sinc2",
+    poly_order=2,
 ):
     """
     Normalize for line work.
@@ -293,6 +309,12 @@ def fit_continuum(
             num_knots=num_knots,
             order=order,
             exclude_near_lines_width=exclude_near_lines_width,
+            base_mask=base_mask,
+            fixed_line_mask=fixed_line_mask,
+            fixed_cont_mask=fixed_cont_mask,
+            cr_mask=cr_mask,
+            fit_model=fit_model,
+            poly_order=poly_order,
         )
     if continuum_mode == "blaze":
         return _fit_continuum_blaze(wavelength, flux, eflux, poly_order=min(6, order + 2))
