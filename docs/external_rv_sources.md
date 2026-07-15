@@ -4,6 +4,25 @@ Star summaries store third-party spectroscopic RVs in `[EXTERNAL RV DATA]`. **Al
 
 Heliocentric catalog values are converted with `astropy.coordinates.SkyCoord.radial_velocity_correction` (see [`darkhunter_rv/rv_frame.py`](../darkhunter_rv/rv_frame.py)).
 
+## Manual literature RVs
+
+Hand-entered / paper RVs live in [`calibration/manual_literature_rvs.csv`](../calibration/manual_literature_rvs.csv) (override path with `DARKHUNTER_MANUAL_LITERATURE_RVS`). Telescope names must use the `LITERATURE_` prefix (e.g. `LITERATURE_Griffin1994`).
+
+Those rows are **re-merged on every summary rewrite** (`write_star_summary`, `--force-gaia` / `query_gaia_data`, and `replace_external_rv_section_in_summary` used by catalog batch updates), so pipeline or DESI refreshes do not drop them.
+
+```bash
+cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
+# Ingest a whitespace epoch table into the canonical CSV
+python3 scripts/update_summary_literature_rvs.py \
+  --ingest /path/to/griffin_epochs.txt \
+  --gaia-id 77413727493690112 \
+  --default-rv-err 0.6
+# Patch summary [EXTERNAL RV DATA] from the CSV
+python3 scripts/update_summary_literature_rvs.py --apply --star-id 77413727493690112
+```
+
+Orbit fits still apply `MJD >= 40000` (see `rv_epoch_is_valid`); older literature epochs can stay in the CSV/summary but are skipped at fit time.
+
 ## Batch update
 
 ```bash
