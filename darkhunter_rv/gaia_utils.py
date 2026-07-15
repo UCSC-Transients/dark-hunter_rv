@@ -11,6 +11,7 @@ from .apogee_rv_query import APOGEE_TELESCOPE_PREFIX, query_apogee_rvs_for_gaia_
 from .desi_rv_query import DESI_TELESCOPE_PREFIX, query_desi_rvs_for_gaia_ids
 from .galah_rv_query import GALAH_TELESCOPE_PREFIX, query_galah_rvs_for_gaia_ids
 from .ges_rv_query import GES_TELESCOPE_PREFIX, query_ges_rvs_for_gaia_ids
+from .manual_literature_rvs import merge_manual_literature
 from .rv_frame import (
     EXTERNAL_RV_HEADER_COMMENT,
     NativeFrame,
@@ -142,6 +143,7 @@ def query_gaia_data(source_id):
     result["external_rvs"] = merge_external_rv_lists(
         result["external_rvs"], apogee_rows, replace_prefixes=(APOGEE_TELESCOPE_PREFIX,)
     )
+    result["external_rvs"] = merge_manual_literature(sid, result.get("external_rvs", []))
     return result
 
 
@@ -555,6 +557,9 @@ def merge_external_rv_lists(
 
 def replace_external_rv_section_in_summary(path: Path, external_rvs: list) -> None:
     """Rewrite [EXTERNAL RV DATA] in a star summary, preserving other sections."""
+    path = Path(path)
+    gid = parse_gaia_id_from_path(path)
+    rows = merge_manual_literature(gid, external_rvs)
     text = path.read_text(encoding="utf-8", errors="replace")
     marker = "[EXTERNAL RV DATA]"
     if marker not in text:
@@ -567,8 +572,8 @@ def replace_external_rv_section_in_summary(path: Path, external_rvs: list) -> No
             end = start + len(marker) + off + 1
             break
     lines = [marker, EXTERNAL_RV_HEADER_COMMENT]
-    if external_rvs:
-        for ext in external_rvs:
+    if rows:
+        for ext in rows:
             lines.append(format_external_rv_line(ext))
     else:
         lines.append("# No external data found.")
@@ -823,7 +828,13 @@ def load_gaia_data_from_star_summary(path, expected_source_id: int | None = None
         return None
     if expected_source_id is not None and not _source_id_matches_expected(meta, expected_source_id):
         return None
-    ext = parse_external_rvs_from_star_summary(path)
+    sid = expected_source_id
+    if sid is None:
+        try:
+            sid = int(meta.get("Source_ID", 0)) or None
+        except (TypeError, ValueError):
+            sid = parse_gaia_id_from_path(path)
+    ext = merge_manual_literature(sid, parse_external_rvs_from_star_summary(path))
     return {"metadata": meta, "external_rvs": ext}
 
 
@@ -837,6 +848,7 @@ def resolve_gaia_data(source_id: int, summary_path, force_query: bool):
     if loaded is None:
         return query_gaia_data(source_id)
     # Disk-only when the star summary parses: do not query Core or LAMOST/RAVE TAP here.
-    # Use --force-gaia to refresh from the network. External RVs stay whatever is in the file
-    # (possibly empty if [EXTERNAL RV DATA] is missing).
+    # Use --force-gaia to refresh from the network. Manual LITERATURE_* rows are re-merged
+    # from calibration/manual_literature_rvs.csv on load and on every EXTERNAL rewrite.
+    loaded["external_rvs"] = merge_manual_literature(source_id, loaded.get("external_rvs", []))
     return loaded

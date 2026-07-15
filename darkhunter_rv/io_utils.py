@@ -8,6 +8,7 @@ import astropy.io.fits as fits
 from astropy.time import Time
 from pathlib import Path
 from . import chunking, config
+from .manual_literature_rvs import merge_manual_literature
 
 def extract_mjd_from_header(header, instrument=None):
     if instrument is not None and hasattr(instrument, "header_keywords"):
@@ -351,11 +352,15 @@ def write_star_summary(obj_id, gaia_data, pipeline_results):
         else:
             f.write("[GAIA METADATA]\nNot Found or Query Failed.\n")
 
-        # 2. External Data
+        # 2. External Data (always re-merge manual LITERATURE_* from CSV)
+        external_rvs = []
+        if gaia_data and gaia_data.get("external_rvs"):
+            external_rvs = list(gaia_data["external_rvs"])
+        external_rvs = merge_manual_literature(obj_id, external_rvs)
         f.write("\n[EXTERNAL RV DATA]\n")
         f.write("# Telescope | MJD | RV (km/s) | Err (km/s) | Flag/ID\n")
-        if gaia_data and gaia_data.get("external_rvs"):
-            for ext in gaia_data["external_rvs"]:
+        if external_rvs:
+            for ext in external_rvs:
                 f.write(f"{ext['telescope']} {ext['mjd']:.5f} {ext['rv']:.3f} {ext['rv_err']:.3f} {ext['flag']}\n")
         else:
             f.write("# No external data found.\n")
