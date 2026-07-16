@@ -95,6 +95,31 @@ if [[ ! -f "$summ" ]]; then
   exit 1
 fi
 
+n_spec="${#SPEC_FILES[@]}"
+SED_REPO="${SED_REPO:-/data2/darkhunter/dark-hunter_sed}"
+RUN_SED="${RUN_SED:-1}"
+SKIP_SINGLE_EPOCH_FIT="${SKIP_SINGLE_EPOCH_FIT:-1}"
+
+if [[ "$RUN_SED" == "1" && -d "$SED_REPO" ]]; then
+  echo "=== SED fit (UMS/UTP) for Gaia_DR3_${gid} (n_spec=${n_spec}) ==="
+  export PYTHONPATH="$SED_REPO:${PYTHONPATH:-}"
+  export STELLAR_ROOT="${STELLAR_ROOT:-/data2/stellar}"
+  export SPEC_ROOT
+  export DARKHUNTER_OUTPUT_DIR="$OUT"
+  export DARKHUNTER_SED_OUTPUT_DIR="${DARKHUNTER_SED_OUTPUT_DIR:-$SED_REPO/output}"
+  export DATA_CSV
+  if ! "$PY" -m darkhunter_sed.cli "$gid" --from-spec-root --no-progress; then
+    echo "[WARN] SED fit failed for Gaia_DR3_${gid} (continuing)"
+  else
+    "$PY" -m darkhunter_sed.push_m1 "$gid" \
+      --rv-output-dir "$OUT" \
+      --data-csv "$DATA_CSV" \
+      || echo "[WARN] push_m1 failed for Gaia_DR3_${gid}"
+  fi
+elif [[ "$RUN_SED" == "1" ]]; then
+  echo "[WARN] SED_REPO missing ($SED_REPO); skip SED"
+fi
+
 echo "=== APF observability window (single star) ==="
 "$PY" scripts/build_apf_observability_cache.py \
   --data-csv "$DATA_CSV" \
@@ -103,26 +128,30 @@ echo "=== APF observability window (single star) ==="
   --gaia-id "$gid" \
   || echo "[WARN] observability cache build failed for Gaia_DR3_${gid} (fit will compute inline)"
 
-fit_args=(
-  fit_apf_rv_keplerian.py
-  --summary "$summ"
-  --output-dir "$OUT"
-  --reports-dir "$REPORTS_DIR"
-  --use-gaia-nss
-  --min-points "$MIN_POINTS"
-  --data-csv "$DATA_CSV"
-)
-if [[ "$FIT_FORCE" == "1" ]]; then
-  fit_args+=(--force)
-fi
-if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
-  fit_args+=(--query-gaia-online)
-fi
-if [[ "$FIT_JITTER" == "1" ]]; then
-  fit_args+=(--fit-jitter)
-fi
-if ! "$PY" "${fit_args[@]}"; then
-  echo "[WARN] fit failed for Gaia_DR3_${gid} (continuing to website if assets exist)"
+if [[ "$n_spec" -lt 2 && "$SKIP_SINGLE_EPOCH_FIT" == "1" ]]; then
+  echo "[INFO] single epoch (n_spec=${n_spec}) — skip Keplerian RV fit"
+else
+  fit_args=(
+    fit_apf_rv_keplerian.py
+    --summary "$summ"
+    --output-dir "$OUT"
+    --reports-dir "$REPORTS_DIR"
+    --use-gaia-nss
+    --min-points "$MIN_POINTS"
+    --data-csv "$DATA_CSV"
+  )
+  if [[ "$FIT_FORCE" == "1" ]]; then
+    fit_args+=(--force)
+  fi
+  if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
+    fit_args+=(--query-gaia-online)
+  fi
+  if [[ "$FIT_JITTER" == "1" ]]; then
+    fit_args+=(--fit-jitter)
+  fi
+  if ! "$PY" "${fit_args[@]}"; then
+    echo "[WARN] fit failed for Gaia_DR3_${gid} (continuing to website if assets exist)"
+  fi
 fi
 
 if [[ "$RUN_RV_PLOTS" == "1" ]]; then
