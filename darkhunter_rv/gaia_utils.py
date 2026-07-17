@@ -82,6 +82,10 @@ def execute_gaia_adql(query: str, name: str) -> list:
 
 def _finite_positive_pair(plx, err) -> tuple[float, float] | None:
     """Return (parallax, parallax_error) when both are finite and positive."""
+    if plx is None or err is None:
+        return None
+    if np.ma.is_masked(plx) or np.ma.is_masked(err):
+        return None
     try:
         p = float(plx)
         e = float(err)

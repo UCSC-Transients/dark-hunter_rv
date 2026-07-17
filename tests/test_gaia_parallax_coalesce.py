@@ -57,6 +57,24 @@ def test_coalesce_skips_nss_parallax_without_error():
     assert err == pytest.approx(SRC_ERR)
 
 
+def test_coalesce_skips_masked_nss_without_warning():
+    import numpy as np
+    import warnings
+
+    row = {
+        "parallax": np.ma.masked,
+        "parallax_error": np.ma.masked,
+        "plx_source": SRC_PLX,
+        "plx_err_source": SRC_ERR,
+    }
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        plx, err = gaia_utils._coalesce_parallax_from_row(row)
+    assert plx == pytest.approx(SRC_PLX)
+    assert err == pytest.approx(SRC_ERR)
+    assert not any("masked element" in str(w.message) for w in caught)
+
+
 def test_process_query_results_keeps_large_gaia_source_error():
     meta = gaia_utils.process_query_results(
         [{"plx_source": SRC_PLX, "plx_err_source": SRC_ERR, "ra_source": 1.0, "dec_source": 2.0, "source_id": STAR}],
