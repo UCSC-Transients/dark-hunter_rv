@@ -96,12 +96,12 @@ def _coalesce_parallax_from_row(row: dict) -> tuple[float, float]:
     """
     Parallax coalesce order matching SED / Gaia NSS practice:
 
-    1. ``final_parallax`` / ``final_parallax_error`` (ADQL COALESCE, if present)
+    1. ``final_parallax`` / ``final_parallax_error`` (pre-coalesced pair, if present)
     2. NSS two-body ``parallax`` / ``parallax_error``
     3. NSS acceleration ``acc_parallax`` / ``acc_parallax_error``
     4. ``gaia_source`` ``plx_source`` / ``plx_err_source``
 
-    Returns ``(nan, nan)`` if no valid pair is found.
+    Only complete positive (π, σπ) pairs are accepted.
     """
     candidates = (
         (row.get("final_parallax"), row.get("final_parallax_error")),
@@ -120,9 +120,13 @@ def query_gaia_data(source_id):
     """
     Query Gaia DR3 core + NSS + FLAME fields for one ``source_id``.
 
-    Parallax uses NSS two-body → NSS acceleration → ``gaia_source`` (via
-    ADQL ``COALESCE`` and Python fallback). Includes GSP-Phot and FLAME
-    columns for ``[GAIA METADATA]`` summaries.
+    Parallax uses NSS two-body → NSS acceleration → ``gaia_source`` (Python
+    coalesce of complete π/σ pairs). Includes GSP-Phot and FLAME columns for
+    ``[GAIA METADATA]`` summaries.
+
+    Uses a lean primary ADQL (``gaia_source`` + NSS two-body + FLAME) plus a
+    separate acceleration query — a single multi-join ``CASE`` query was
+    returning HTTP 500 from the archive.
     """
     if not source_id:
         return None
@@ -140,7 +144,6 @@ def query_gaia_data(source_id):
         "n.mass_ratio, n.mass_ratio_error, n.inclination, n.inclination_error, "
         "n.arg_periastron, n.arg_periastron_error"
     )
-    cols_acc = "acc.parallax AS acc_parallax, acc.parallax_error AS acc_parallax_error"
     cols_flame = "ap.mass_flame, ap.age_flame, ap.flags_flame"
     cols_source = (
         "s.ruwe, s.teff_gspphot, s.teff_gspphot_lower, s.teff_gspphot_upper, "
@@ -150,29 +153,39 @@ def query_gaia_data(source_id):
         "s.parallax AS plx_source, s.parallax_error AS plx_err_source, "
         "s.pmra, s.pmdec, s.radial_velocity, s.radial_velocity_error, s.source_id"
     )
-    cols_coalesce = (
-        "CASE "
-        "WHEN n.parallax IS NOT NULL AND n.parallax_error IS NOT NULL THEN n.parallax "
-        "WHEN acc.parallax IS NOT NULL AND acc.parallax_error IS NOT NULL THEN acc.parallax "
-        "ELSE s.parallax END AS final_parallax, "
-        "CASE "
-        "WHEN n.parallax IS NOT NULL AND n.parallax_error IS NOT NULL THEN n.parallax_error "
-        "WHEN acc.parallax IS NOT NULL AND acc.parallax_error IS NOT NULL THEN acc.parallax_error "
-        "ELSE s.parallax_error END AS final_parallax_error"
-    )
 
     q_main = f"""
-    SELECT {cols_nss}, {cols_acc}, {cols_flame}, {cols_source}, {cols_coalesce}
+    SELECT {cols_nss}, {cols_flame}, {cols_source}
     FROM gaiadr3.gaia_source AS s
     LEFT JOIN gaiadr3.nss_two_body_orbit AS n ON s.source_id = n.source_id
-    LEFT JOIN gaiadr3.nss_acceleration_astro AS acc ON s.source_id = acc.source_id
     LEFT JOIN gaiadr3.astrophysical_parameters AS ap ON s.source_id = ap.source_id
     WHERE s.source_id = {source_id}
     """
 
     main_rows = execute_gaia_adql(q_main.strip(), "Gaia Core")
     if not main_rows:
+        # Lean fallback: gaia_source + FLAME only (no NSS join).
+        q_fallback = f"""
+        SELECT {cols_flame}, {cols_source}
+        FROM gaiadr3.gaia_source AS s
+        LEFT JOIN gaiadr3.astrophysical_parameters AS ap ON s.source_id = ap.source_id
+        WHERE s.source_id = {source_id}
+        """
+        main_rows = execute_gaia_adql(q_fallback.strip(), "Gaia Core (source+FLAME)")
+    if not main_rows:
         return None
+
+    # NSS acceleration π/σ as a separate job (avoids heavy multi-join 500s).
+    q_acc = f"""
+    SELECT parallax AS acc_parallax, parallax_error AS acc_parallax_error
+    FROM gaiadr3.nss_acceleration_astro
+    WHERE source_id = {source_id}
+    """
+    acc_rows = execute_gaia_adql(q_acc.strip(), "Gaia NSS acceleration")
+    if acc_rows:
+        for k, v in acc_rows[0].items():
+            if k not in main_rows[0] or main_rows[0].get(k) is None:
+                main_rows[0][k] = v
 
     base = main_rows[0]
     ra = base.get("ra") if base.get("ra") else base.get("ra_source")

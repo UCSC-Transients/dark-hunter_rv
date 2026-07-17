@@ -89,3 +89,35 @@ def test_write_star_summary_preserves_sed_m1(tmp_path, monkeypatch):
     assert "M1_p84: 0.95000000" in text
     assert "Teff: 5750.00000000" in text
     assert "new_epoch_2.txt" in text
+
+
+def test_write_star_summary_preserves_meta_when_query_fails(tmp_path, monkeypatch):
+    """Live Gaia None must not wipe existing [GAIA METADATA] / EXTERNAL rows."""
+    monkeypatch.setattr(config, "OUTPUT_DIR", tmp_path)
+    oid = 1125337614021152256
+    path = tmp_path / f"Gaia_DR3_{oid}_summary.txt"
+    path.write_text(
+        f"### STAR SUMMARY: {oid} ###\n\n"
+        "[GAIA METADATA]\n"
+        f"Source_ID: {oid}\n"
+        "RA: 10.0\n"
+        "Dec: 20.0\n"
+        "Parallax: 2.26000000\n"
+        "Parallax_Error: 0.02200000\n"
+        "Teff: 5500.00000000\n"
+        "\n[EXTERNAL RV DATA]\n"
+        "# Telescope | MJD | RV (km/s) | Err (km/s) | Flag/ID\n"
+        "DESI_SV 60000.00000 1.000 0.500 flag\n"
+        "\n[PIPELINE RESULTS]\n"
+        "# File | MJD | RV (km/s) | Err (km/s) | wRMS (km/s) | Fallback?\n"
+        "epoch_1.txt 60000.00000 16.000 0.100 0.200 False\n",
+        encoding="utf-8",
+    )
+
+    io_utils.write_star_summary(oid, None, [])
+
+    text = path.read_text(encoding="utf-8")
+    assert "Not Found or Query Failed" not in text
+    assert "Parallax_Error: 0.02200000" in text
+    assert "DESI_SV" in text
+    assert "epoch_1.txt" in text
