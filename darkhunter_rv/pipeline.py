@@ -313,6 +313,9 @@ def _continuum_fit_kw(
         spans = getattr(args, "sed_continuum_spans", None)
         if spans:
             kw["continuum_spans"] = spans
+        line_spans = getattr(args, "sed_line_spans", None)
+        if line_spans:
+            kw["line_spans"] = line_spans
     blaze_cal = getattr(args, "blaze_calibration", None)
     if mode in ("sinc_blaze", "sinc_blaze_only"):
         if blaze_cal is not None and echelle_order is not None:
@@ -1828,11 +1831,14 @@ def main(argv: list[str] | None = None) -> None:
     configure_blaze_continuum(args, parser=parser)
 
     sed_path = getattr(args, "sed_regions_json", None) or config.SED_REGIONS_JSON
-    args.sed_continuum_spans = continuum.load_sed_continuum_spans(sed_path)
+    cont_spans, line_spans = continuum.load_sed_region_spans(sed_path)
+    args.sed_continuum_spans = cont_spans
+    args.sed_line_spans = line_spans
     if str(getattr(args, "continuum_mode", "")) == "none":
         logger.info(
-            "continuum_mode=none: %d SED continuum spans from %s",
-            len(args.sed_continuum_spans or []),
+            "continuum_mode=none: %d continuum + %d line SED spans from %s (fixed_cont_mask)",
+            len(cont_spans),
+            len(line_spans),
             sed_path,
         )
 

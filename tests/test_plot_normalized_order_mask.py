@@ -8,7 +8,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from darkhunter_rv.continuum import fit_continuum, load_sed_continuum_spans
+from darkhunter_rv.continuum import (
+    build_fixed_cont_mask,
+    fit_continuum,
+    load_sed_continuum_spans,
+    load_sed_region_spans,
+)
 from darkhunter_rv.plotting import (
     _mask_transmission_shifted_native,
     plot_normalized_order,
@@ -40,10 +45,29 @@ def test_continuum_none_sed_span_median_scale() -> None:
     assert ne[0] == pytest.approx(2.0 / 100.0, rel=0.01)
 
 
+def test_fixed_cont_mask_excludes_line_spans() -> None:
+    w = np.linspace(5000.0, 5100.0, 201)
+    flux = np.full(201, 100.0)
+    cont = [(5050.0, 5070.0)]
+    lines = [(5055.0, 5060.0)]
+    m = build_fixed_cont_mask(w, flux, continuum_spans=cont, line_spans=lines, edge_pixels=0)
+    assert m[(w >= 5050.0) & (w <= 5054.0)].all()
+    assert not m[(w >= 5055.0) & (w <= 5060.0)].any()
+    # Median scale ignores line-span pixels
+    flux[(w >= 5055.0) & (w <= 5060.0)] = 10.0
+    _, nf, _ = fit_continuum(
+        w, flux, np.ones_like(flux), continuum_mode="none", continuum_spans=cont, line_spans=lines
+    )
+    assert np.median(nf[m]) == pytest.approx(1.0, abs=0.05)
+
+
 def test_load_sed_continuum_spans(tmp_path: Path) -> None:
     doc = {
         "orders": {
-            "10": {"continuum_regions": [[5000.0, 5001.0], [5010.0, 5012.0]]},
+            "10": {
+                "continuum_regions": [[5000.0, 5001.0], [5010.0, 5012.0]],
+                "line_regions": [[5005.0, 5006.0]],
+            },
             "11": {"continuum_regions": [[5200.0, 5205.0]]},
         }
     }
@@ -52,6 +76,10 @@ def test_load_sed_continuum_spans(tmp_path: Path) -> None:
     spans = load_sed_continuum_spans(path)
     assert len(spans) == 3
     assert spans[0] == (5000.0, 5001.0)
+    cont, lines = load_sed_region_spans(path)
+    assert len(cont) == 3
+    assert len(lines) == 1
+    assert lines[0] == (5005.0, 5006.0)
 
 
 def test_plot_normalized_order_with_shifted_mask(tmp_path: Path) -> None:
