@@ -1157,6 +1157,9 @@ def process_spectrum(
                 None,
                 plot_root / f"{stem}_chunk{chunk_key}_norm.png",
                 title=f"{chunk_key} norm ({_resolve_continuum_mode(args, 'mask')})",
+                mask_wave=mw if mw is not None else None,
+                mask_strength=ms if ms is not None else None,
+                rv_mask_kms=float(rv_m) if np.isfinite(rv_m) else None,
             )
 
     if not plots_only:

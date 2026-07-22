@@ -21,13 +21,44 @@ def plot_normalized_order(
     continuum: np.ndarray | None,
     outpath: Path,
     title: str = "",
+    *,
+    mask_wave: np.ndarray | None = None,
+    mask_strength: np.ndarray | None = None,
+    rv_mask_kms: float | None = None,
 ) -> None:
+    """
+    Plot continuum-normalized order flux.
+
+    When ``mask_wave`` / ``mask_strength`` / ``rv_mask_kms`` are given, overlay a schematic
+    stellar mask Doppler-shifted by ``rv_mask_kms`` (same construction as Hβ diagnostics).
+    """
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(10, 3))
     ax.plot(wave, flux_norm, "k-", lw=0.6, label="norm flux")
     if continuum is not None and len(continuum) == len(wave):
         ax.plot(wave, continuum / np.nanmedian(continuum), "r--", lw=0.8, alpha=0.7, label="continuum (scaled)")
+    if (
+        mask_wave is not None
+        and mask_strength is not None
+        and rv_mask_kms is not None
+        and np.isfinite(float(rv_mask_kms))
+    ):
+        pseudo = _hb_mask_pseudo_on_wavelengths(
+            np.asarray(wave, float),
+            np.asarray(mask_wave, float),
+            np.asarray(mask_strength, float),
+            float(rv_mask_kms),
+        )
+        if pseudo is not None:
+            ax.plot(
+                wave,
+                pseudo,
+                "b-",
+                lw=0.85,
+                alpha=0.85,
+                label=f"mask (shifted, RV={float(rv_mask_kms):+.2f} km/s)",
+            )
     ax.axhline(1.0, color="gray", ls=":")
     ax.set_xlabel("Wavelength (A)")
     ax.set_ylabel("Norm flux")
