@@ -49,6 +49,16 @@ INSTRUMENTS = {
         mask_directory=str(config.MASK_DIRECTORY),
         header_keywords={"jd": "JD_UTC_FLUXWEIGHTED_FRD"},
     ),
+    "HIRES": InstrumentProfile(
+        name="HIRES",
+        file_format="fits",
+        num_orders=49,
+        bias_file=None,
+        bad_orders=[],
+        mask_directory=str(config.MASK_DIRECTORY),
+        header_keywords={"bjd": "BJD"},
+        resolving_power=45000.0,
+    ),
 }
 
 

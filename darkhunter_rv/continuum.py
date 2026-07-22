@@ -219,6 +219,26 @@ def _fit_continuum_blaze(wavelength, flux, eflux, poly_order=4):
     return wavelength[final_mask], norm_flux[final_mask], norm_eflux[final_mask]
 
 
+def _fit_continuum_none(wavelength, flux, eflux):
+    """
+    Passthrough continuum for already-deblazed spectra.
+
+    Divides flux and eflux by the median positive flux so the continuum sits near 1,
+    without fitting a spline or blaze (preserves strong-line wing shape).
+    """
+    wavelength = np.asarray(wavelength, float)
+    flux = np.asarray(flux, float)
+    eflux = np.asarray(eflux, float)
+    finite = np.isfinite(flux) & np.isfinite(wavelength)
+    if not np.any(finite):
+        return wavelength, flux, eflux
+    pos = finite & (flux > 0)
+    scale = float(np.nanmedian(flux[pos])) if np.any(pos) else float(np.nanmedian(flux[finite]))
+    if not np.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    return wavelength, flux / scale, eflux / scale
+
+
 def _fit_continuum_sinc_blaze(
     wavelength,
     flux,
@@ -290,10 +310,15 @@ def fit_continuum(
     Normalize for line work.
 
     continuum_mode:
+      - ``none``: no continuum fit; median-scale flux (and eflux) to ~1. Use when the
+        spectrum is already deblazed so the continuum shape (including strong-line wings)
+        should be preserved.
       - ``spline`` / ``blaze``: legacy per-spectrum continuum (no shared calibration).
       - ``sinc_blaze``: shared per-order sinc² blaze, then spline on blaze-corrected flux.
       - ``sinc_blaze_only``: shared blaze + median normalization only.
     """
+    if continuum_mode == "none":
+        return _fit_continuum_none(wavelength, flux, eflux)
     if continuum_mode in ("sinc_blaze", "sinc_blaze_only"):
         if blaze_model is None:
             raise ValueError(

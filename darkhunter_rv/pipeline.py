@@ -583,6 +583,8 @@ def process_spectrum(
         header, spec_data = io_utils.read_spectrum_ghost(spectrum_file)
     elif instrument.name == "MAROON-X":
         header, spec_data = io_utils.read_spectrum_maroonx(spectrum_file)
+    elif instrument.name == "HIRES":
+        header, spec_data = io_utils.read_spectrum_hires(spectrum_file)
     else:
         header, spec_data = io_utils.read_spectrum(spectrum_file)
 
@@ -1616,7 +1618,7 @@ def configure_blaze_continuum(args: argparse.Namespace, *, parser: argparse.Argu
 def main(argv: list[str] | None = None) -> None:
     argv = argv if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Dark Hunter echelle RV pipeline")
-    parser.add_argument("input_file", nargs="+", help="Spectra (txt, GHOST blue FITS, MAROON-X h5)")
+    parser.add_argument("input_file", nargs="+", help="Spectra (txt, GHOST blue FITS, HIRES b FITS, MAROON-X h5)")
     parser.add_argument("--instrument", default="APF")
     parser.add_argument("--teff", type=float, default=config.DEFAULT_TEFF)
     parser.add_argument(
@@ -1712,12 +1714,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--continuum-mode",
-        choices=["split", "spline", "blaze", "sinc_blaze", "sinc_blaze_only"],
+        choices=["split", "spline", "blaze", "sinc_blaze", "sinc_blaze_only", "none"],
         default="split",
         help=(
             "split (default): mask CCF uses sinc_blaze_only, template/strong use sinc_blaze when "
             "calibration/blaze_orders_apf.json is present; spline: legacy envelope only; "
-            "sinc_blaze / sinc_blaze_only: same mode for all lanes"
+            "sinc_blaze / sinc_blaze_only: same mode for all lanes; "
+            "none: median-scale only (already-deblazed spectra, e.g. HIRES)"
         ),
     )
     parser.add_argument(
