@@ -56,7 +56,7 @@ INSTRUMENTS = {
         bias_file=None,
         bad_orders=[],
         mask_directory=str(config.MASK_DIRECTORY),
-        header_keywords={"bjd": "BJD"},
+        header_keywords={"mjd": "MJD"},
         resolving_power=45000.0,
     ),
 }

@@ -22,19 +22,12 @@ from typing import Any
 import astropy.io.fits as fits
 import astropy.units as u
 import numpy as np
-from astropy.coordinates import EarthLocation, SkyCoord
-from astropy.time import Time
+from astropy.coordinates import SkyCoord
 
 from darkhunter_rv.gaia_utils import execute_gaia_adql
+from darkhunter_rv.io_utils import compute_hires_bjd, hires_photon_weighted_time
 
 LOGGER = logging.getLogger("rename_hires_by_gaia")
-
-# Keck Observatory (Mauna Kea); used when computing BJD if header lacks it.
-KECK_LOCATION = EarthLocation(
-    lat=19.8263 * u.deg,
-    lon=-155.4750 * u.deg,
-    height=4145.0 * u.m,
-)
 
 MAKEE_CHIP_RE = re.compile(
     r"^(?P<chip>[bir])(?P<outfile>.+)\.(?P<frameno>\d+)\.fits$",
@@ -87,46 +80,9 @@ def sexagesimal_ra_dec_to_deg(ra: str | float, dec: str | float) -> tuple[float,
     return float(coord.ra.deg), float(coord.dec.deg)
 
 
-def mid_exposure_time(header: fits.Header) -> Time:
-    """Mid-exposure UTC from DATE_BEG/DATE_END, else MJD, else DATE-OBS+EXPTIME."""
-    beg = header.get("DATE_BEG") or header.get("DATE-BEG")
-    end = header.get("DATE_END") or header.get("DATE-END")
-    if beg and end:
-        t0 = Time(str(beg), format="isot", scale="utc")
-        t1 = Time(str(end), format="isot", scale="utc")
-        return t0 + 0.5 * (t1 - t0)
-    if "MJD" in header:
-        return Time(float(header["MJD"]), format="mjd", scale="utc")
-    date_obs = header.get("DATE-OBS")
-    exptime = float(header.get("EXPTIME", 0.0) or 0.0)
-    if date_obs:
-        t0 = Time(str(date_obs), format="isot", scale="utc")
-        return t0 + (0.5 * exptime) * u.s
-    raise ValueError("Cannot determine mid-exposure time from header")
-
-
-def compute_bjd(header: fits.Header, ra_deg: float, dec_deg: float) -> float:
-    """
-    Barycentric Julian Date (TDB) at mid-exposure for the target at Keck.
-
-    Parameters
-    ----------
-    header:
-        Primary FITS header with timing cards.
-    ra_deg, dec_deg:
-        ICRS coordinates in degrees.
-
-    Returns
-    -------
-    float
-        BJD_TDB.
-    """
-    if "BJD" in header:
-        return float(header["BJD"])
-    mid = mid_exposure_time(header)
-    coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
-    ltt = mid.light_travel_time(coord, kind="barycentric", location=KECK_LOCATION)
-    return float((mid.tdb + ltt).jd)
+def photon_weighted_mjd(header: fits.Header) -> float:
+    """Photon-weighted MJD from header ``MJD``/``BJD`` (not DATE mid)."""
+    return float(hires_photon_weighted_time(header).mjd)
 
 
 def targname_is_digit_prefix(targname: str) -> str | None:
@@ -279,7 +235,7 @@ def discover_makee_observations(directory: Path) -> list[HiresObservation]:
         with fits.open(chips["b"].path) as hdul:
             header = hdul[0].header.copy()
         ra_deg, dec_deg = sexagesimal_ra_dec_to_deg(header["RA"], header["DEC"])
-        mjd = float(header["MJD"]) if "MJD" in header else float(mid_exposure_time(header).mjd)
+        mjd = photon_weighted_mjd(header)
         observations.append(
             HiresObservation(
                 outfile=outfile,
@@ -323,8 +279,9 @@ def write_headers_and_rename(
         with fits.open(src, mode="update") as hdul:
             hdr = hdul[0].header
             hdr["GAIADR3ID"] = (gaia_name, "Gaia DR3 designation")
-            bjd = compute_bjd(hdr, obs.ra_deg, obs.dec_deg)
-            hdr["BJD"] = (bjd, "Barycentric JD (TDB) mid-exposure")
+            # Always recompute from photon-weighted MJD when present (not DATE mid).
+            bjd = compute_hires_bjd(hdr, obs.ra_deg, obs.dec_deg)
+            hdr["BJD"] = (bjd, "Barycentric JD (TDB) photon-weighted")
             hdul.flush()
         if dest.exists() and dest.resolve() != src.resolve():
             raise FileExistsError(f"Refusing to overwrite existing {dest}")

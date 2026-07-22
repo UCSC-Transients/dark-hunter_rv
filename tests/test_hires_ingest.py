@@ -11,10 +11,15 @@ import pytest
 from darkhunter_rv.continuum import fit_continuum
 from darkhunter_rv.io_utils import (
     _hires_eflux_from_unc,
+    apply_barycentric_wavelength_shift,
+    compute_hires_bjd,
     extract_mjd_from_header,
+    hires_berv_kms,
+    hires_photon_weighted_time,
     read_spectrum_hires,
 )
 from darkhunter_rv.instruments import get_instrument_profile
+from darkhunter_rv import config
 from scripts.rename_hires_by_gaia import (
     crosscheck_targname,
     parse_makee_chip_name,
@@ -59,7 +64,7 @@ def test_hires_instrument_profile() -> None:
     inst = get_instrument_profile("HIRES")
     assert inst.num_orders == 49
     assert inst.resolving_power == 45000.0
-    assert inst.header_keywords["bjd"] == "BJD"
+    assert inst.header_keywords["mjd"] == "MJD"
     assert inst.bias_file is None
 
 
@@ -80,12 +85,23 @@ def test_read_spectrum_hires_triplet(tmp_path: Path) -> None:
         _write_hires_chip(path, n_orders=n_ord, n_pix=20, wave0=wave0, dlam=0.1)
         with fits.open(path, mode="update") as hdul:
             hdul[0].header["BJD"] = 2460000.5
+            hdul[0].header["MJD"] = 60000.0
+            hdul[0].header["RA"] = "13:36:27.00"
+            hdul[0].header["DEC"] = "+45:52:23.0"
             hdul.flush()
 
     blue = tmp_path / f"Gaia_DR3_{gid}_b_epoch_1.fits"
+    with fits.open(blue) as hdul:
+        wave0_raw = float(hdul[2].data[0, 0])
+        berv = hires_berv_kms(hdul[0].header)
     header, spec = read_spectrum_hires(blue)
     assert len(spec) == 7
-    assert float(header["BJD"]) == 2460000.5
+    assert float(header["BERV"]) == pytest.approx(berv, rel=0, abs=1e-6)
+    # Wavelengths shifted by BERV; time prefers MJD over BJD
+    assert spec[0]["wavelength"][0] == pytest.approx(
+        wave0_raw * (1.0 + berv / config.C_KMS), rel=0, abs=1e-8
+    )
+    assert float(hires_photon_weighted_time(header).mjd) == pytest.approx(60000.0)
     # Wavelength order: first order from blue, last from intermediate
     assert spec[0]["wavelength"][0] < spec[6]["wavelength"][0]
     med_f = np.median(spec[0]["flux"])
@@ -94,7 +110,22 @@ def test_read_spectrum_hires_triplet(tmp_path: Path) -> None:
 
     inst = get_instrument_profile("HIRES")
     mjd = extract_mjd_from_header(header, inst)
-    assert mjd == pytest.approx(2460000.5 - 2400000.5, rel=0, abs=1e-6)
+    assert mjd == pytest.approx(60000.0, rel=0, abs=1e-9)
+
+
+def test_photon_weighted_time_prefers_mjd() -> None:
+    hdr = fits.Header()
+    hdr["MJD"] = 61170.445934
+    hdr["BJD"] = 2461170.99
+    t = hires_photon_weighted_time(hdr)
+    assert float(t.mjd) == pytest.approx(61170.445934)
+
+
+def test_barycentric_wavelength_shift() -> None:
+    wave = np.array([5000.0, 5001.0])
+    shifted = apply_barycentric_wavelength_shift(wave, -14.712206)
+    assert shifted[0] < wave[0]
+    assert shifted[0] == pytest.approx(wave[0] * (1.0 - 14.712206 / config.C_KMS))
 
 
 def test_continuum_none_median_scale() -> None:
@@ -172,4 +203,8 @@ def test_write_headers_and_rename_dry_and_apply(tmp_path: Path) -> None:
     with fits.open(dest_b) as hdul:
         assert hdul[0].header["GAIADR3ID"] == f"Gaia DR3 {sid}"
         assert "BJD" in hdul[0].header
-        assert float(hdul[0].header["BJD"]) > 2400000.0
+        assert float(hdul[0].header["BJD"]) == pytest.approx(
+            compute_hires_bjd(hdul[0].header), rel=0, abs=1e-8
+        )
+        berv = hires_berv_kms(hdul[0].header)
+        assert berv == pytest.approx(-14.6986, abs=0.01)

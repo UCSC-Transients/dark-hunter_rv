@@ -5,10 +5,19 @@ import logging
 import numpy as np
 import pandas as pd
 import astropy.io.fits as fits
+import astropy.units as u
+from astropy.coordinates import EarthLocation, SkyCoord
 from astropy.time import Time
 from pathlib import Path
 from . import chunking, config
 from .manual_literature_rvs import merge_manual_literature
+
+# Keck Observatory (Mauna Kea) for HIRES barycentric corrections.
+_KECK_LOCATION = EarthLocation(
+    lat=19.8263 * u.deg,
+    lon=-155.4750 * u.deg,
+    height=4145.0 * u.m,
+)
 
 def extract_mjd_from_header(header, instrument=None):
     if instrument is not None and hasattr(instrument, "header_keywords"):
@@ -21,6 +30,10 @@ def extract_mjd_from_header(header, instrument=None):
                 key = instrument.header_keywords["jd"]
                 if key in header:
                     return Time(header[key], format='jd', scale='utc').mjd
+            if "mjd" in instrument.header_keywords:
+                key = instrument.header_keywords["mjd"]
+                if key in header:
+                    return float(header[key])
 
     if isinstance(header, (list, tuple)):
         for line in header:
@@ -122,6 +135,74 @@ _HIRES_CHIP_RE = re.compile(r"_([bir])_epoch_(\d+)\.fits$", re.IGNORECASE)
 _HIRES_ABS_SNR_CEILING = 200.0
 
 
+def hires_photon_weighted_time(header) -> Time:
+    """
+    Photon-weighted observation time from HIRES header.
+
+    Prefer ``MJD`` (UTC), then ``BJD`` (TDB). Do **not** use DATE_BEG/DATE_END midpoint;
+    Makee ``MJD``/``BJD`` are photon-weighted.
+    """
+    if header is None:
+        raise ValueError("HIRES header required for photon-weighted time")
+    if "MJD" in header:
+        return Time(float(header["MJD"]), format="mjd", scale="utc")
+    if "BJD" in header:
+        return Time(float(header["BJD"]), format="jd", scale="tdb")
+    raise ValueError("HIRES header missing photon-weighted MJD/BJD")
+
+
+def hires_ra_dec_deg(header) -> tuple[float, float]:
+    """ICRS RA/Dec (deg) from HIRES ``RA``/``DEC`` sexagesimal or degree cards."""
+    coord = SkyCoord(
+        ra=header["RA"],
+        dec=header["DEC"],
+        unit=(u.hourangle, u.deg),
+        frame="icrs",
+    )
+    return float(coord.ra.deg), float(coord.dec.deg)
+
+
+def compute_hires_bjd(header, ra_deg: float | None = None, dec_deg: float | None = None) -> float:
+    """
+    Barycentric Julian Date (TDB) at the photon-weighted time (``MJD`` preferred).
+
+    If ``BJD`` is already present and ``MJD`` is absent, return existing ``BJD``.
+    When ``MJD`` is present, always recompute from that photon-weighted UTC epoch.
+    """
+    if "MJD" not in header and "BJD" in header:
+        return float(header["BJD"])
+    if ra_deg is None or dec_deg is None:
+        ra_deg, dec_deg = hires_ra_dec_deg(header)
+    obstime = hires_photon_weighted_time(header)
+    coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
+    ltt = obstime.light_travel_time(coord, kind="barycentric", location=_KECK_LOCATION)
+    return float((obstime.tdb + ltt).jd)
+
+
+def hires_berv_kms(header, ra_deg: float | None = None, dec_deg: float | None = None) -> float:
+    """
+    Barycentric Earth RV (km/s) to add to an observatory-frame measured RV.
+
+    Uses photon-weighted ``MJD``/``BJD`` and Keck location (astropy
+    ``radial_velocity_correction``).
+    """
+    if ra_deg is None or dec_deg is None:
+        ra_deg, dec_deg = hires_ra_dec_deg(header)
+    obstime = hires_photon_weighted_time(header)
+    coord = SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg, frame="icrs")
+    berv = coord.radial_velocity_correction(
+        kind="barycentric",
+        obstime=obstime,
+        location=_KECK_LOCATION,
+    )
+    return float(berv.to_value(u.km / u.s))
+
+
+def apply_barycentric_wavelength_shift(wave: np.ndarray, berv_kms: float) -> np.ndarray:
+    """Shift observatory-frame wavelengths into the barycentric frame: λ' = λ (1 + BERV/c)."""
+    return np.asarray(wave, float) * (1.0 + float(berv_kms) / float(config.C_KMS))
+
+
 def _hires_sibling_paths(blue_filename: str | Path) -> tuple[Path, Path, Path]:
     """
     Resolve HIRES Makee chip triplet from the blue (``_b_``) filename.
@@ -172,6 +253,7 @@ def _append_hires_chip_orders(
     filename: Path,
     *,
     start_index: int,
+    berv_kms: float | None = None,
 ) -> tuple[int, object]:
     """Load one HIRES chip FITS; append orders starting at ``start_index``. Return next index + header."""
     with fits.open(filename) as hdul:
@@ -187,6 +269,8 @@ def _append_hires_chip_orders(
             f"flux={getattr(flux, 'shape', None)} unc={getattr(unc, 'shape', None)} "
             f"wave={getattr(wave, 'shape', None)}"
         )
+    if berv_kms is not None:
+        wave = apply_barycentric_wavelength_shift(wave, berv_kms)
     order_index = start_index
     for i in range(flux.shape[0]):
         f_row = flux[i]
@@ -209,18 +293,34 @@ def read_spectrum_hires(blue_filename):
 
     Each chip FITS: HDU0 flux, HDU1 uncertainty, HDU2 wavelength (Å). Uncertainty is
     treated as relative when the implied absolute SNR is unrealistically high.
+
+    Wavelengths are shifted into the barycentric frame using BERV at the photon-weighted
+    ``MJD``/``BJD`` (Keck), so measured RVs match the APF barycentric convention.
     """
     if isinstance(blue_filename, list):
         blue_filename = blue_filename[0]
     blue, red, intermediate = _hires_sibling_paths(blue_filename)
+    # Need header first for BERV; load blue once via append after computing BERV from a peek.
+    with fits.open(blue) as hdul:
+        header0 = hdul[0].header.copy()
+    berv_kms = hires_berv_kms(header0)
     spectrum_data: dict = {}
-    order_index, header = _append_hires_chip_orders(spectrum_data, blue, start_index=0)
-    order_index, _ = _append_hires_chip_orders(spectrum_data, red, start_index=order_index)
-    order_index, _ = _append_hires_chip_orders(
-        spectrum_data, intermediate, start_index=order_index
+    order_index, header = _append_hires_chip_orders(
+        spectrum_data, blue, start_index=0, berv_kms=berv_kms
     )
+    order_index, _ = _append_hires_chip_orders(
+        spectrum_data, red, start_index=order_index, berv_kms=berv_kms
+    )
+    order_index, _ = _append_hires_chip_orders(
+        spectrum_data, intermediate, start_index=order_index, berv_kms=berv_kms
+    )
+    header = header.copy()
+    header["BERV"] = (berv_kms, "Barycentric Earth RV (km/s); applied to wavelengths")
     logging.info(
-        "HIRES loaded %s (+r,+i): %d orders", blue.name, order_index
+        "HIRES loaded %s (+r,+i): %d orders; BERV=%.4f km/s (photon-weighted MJD/BJD)",
+        blue.name,
+        order_index,
+        berv_kms,
     )
     return header, spectrum_data
 
