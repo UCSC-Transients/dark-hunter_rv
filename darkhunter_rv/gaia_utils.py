@@ -80,28 +80,121 @@ def execute_gaia_adql(query: str, name: str) -> list:
         return []
 
 
+def _finite_positive_pair(plx, err) -> tuple[float, float] | None:
+    """Return (parallax, parallax_error) when both are finite and positive."""
+    if plx is None or err is None:
+        return None
+    if np.ma.is_masked(plx) or np.ma.is_masked(err):
+        return None
+    try:
+        p = float(plx)
+        e = float(err)
+    except (TypeError, ValueError):
+        return None
+    if not (np.isfinite(p) and np.isfinite(e) and p > 0.0 and e > 0.0):
+        return None
+    return (p, e)
+
+
+def _coalesce_parallax_from_row(row: dict) -> tuple[float, float]:
+    """
+    Parallax coalesce order matching SED / Gaia NSS practice:
+
+    1. ``final_parallax`` / ``final_parallax_error`` (pre-coalesced pair, if present)
+    2. NSS two-body ``parallax`` / ``parallax_error``
+    3. NSS acceleration ``acc_parallax`` / ``acc_parallax_error``
+    4. ``gaia_source`` ``plx_source`` / ``plx_err_source``
+
+    Only complete positive (π, σπ) pairs are accepted.
+    """
+    candidates = (
+        (row.get("final_parallax"), row.get("final_parallax_error")),
+        (row.get("parallax"), row.get("parallax_error")),
+        (row.get("acc_parallax"), row.get("acc_parallax_error")),
+        (row.get("plx_source"), row.get("plx_err_source")),
+    )
+    for plx, err in candidates:
+        pair = _finite_positive_pair(plx, err)
+        if pair is not None:
+            return pair
+    return (float("nan"), float("nan"))
+
+
 def query_gaia_data(source_id):
+    """
+    Query Gaia DR3 core + NSS + FLAME fields for one ``source_id``.
+
+    Parallax uses NSS two-body → NSS acceleration → ``gaia_source`` (Python
+    coalesce of complete π/σ pairs). Includes GSP-Phot and FLAME columns for
+    ``[GAIA METADATA]`` summaries.
+
+    Uses a lean primary ADQL (``gaia_source`` + NSS two-body + FLAME) plus a
+    separate acceleration query — a single multi-join ``CASE`` query was
+    returning HTTP 500 from the archive.
+    """
     if not source_id:
         return None
 
-    cols_nss = "n.nss_solution_type, n.ra, n.dec, n.parallax, n.parallax_error, n.a_thiele_innes, n.a_thiele_innes_error, n.b_thiele_innes, n.b_thiele_innes_error, n.f_thiele_innes, n.f_thiele_innes_error, n.g_thiele_innes, n.g_thiele_innes_error, n.c_thiele_innes, n.c_thiele_innes_error, n.h_thiele_innes, n.h_thiele_innes_error, n.period, n.period_error, n.t_periastron, n.t_periastron_error, n.eccentricity, n.eccentricity_error, n.center_of_mass_velocity, n.center_of_mass_velocity_error, n.semi_amplitude_primary, n.semi_amplitude_primary_error, n.semi_amplitude_secondary, n.semi_amplitude_secondary_error, n.mass_ratio, n.mass_ratio_error, n.inclination, n.inclination_error, n.arg_periastron, n.arg_periastron_error"
-    cols_source = "s.ruwe, s.teff_gspphot, s.teff_gspphot_lower, s.teff_gspphot_upper, s.logg_gspphot, s.logg_gspphot_lower, s.logg_gspphot_upper, s.mh_gspphot, s.mh_gspphot_lower, s.mh_gspphot_upper, s.ra AS ra_source, s.dec AS dec_source, s.parallax AS plx_source, s.pmra, s.pmdec, s.radial_velocity, s.radial_velocity_error, s.source_id"
+    cols_nss = (
+        "n.nss_solution_type, n.ra, n.dec, n.parallax, n.parallax_error, "
+        "n.a_thiele_innes, n.a_thiele_innes_error, n.b_thiele_innes, n.b_thiele_innes_error, "
+        "n.f_thiele_innes, n.f_thiele_innes_error, n.g_thiele_innes, n.g_thiele_innes_error, "
+        "n.c_thiele_innes, n.c_thiele_innes_error, n.h_thiele_innes, n.h_thiele_innes_error, "
+        "n.period, n.period_error, n.t_periastron, n.t_periastron_error, "
+        "n.eccentricity, n.eccentricity_error, "
+        "n.center_of_mass_velocity, n.center_of_mass_velocity_error, "
+        "n.semi_amplitude_primary, n.semi_amplitude_primary_error, "
+        "n.semi_amplitude_secondary, n.semi_amplitude_secondary_error, "
+        "n.mass_ratio, n.mass_ratio_error, n.inclination, n.inclination_error, "
+        "n.arg_periastron, n.arg_periastron_error"
+    )
+    cols_flame = "ap.mass_flame, ap.age_flame, ap.flags_flame"
+    cols_source = (
+        "s.ruwe, s.teff_gspphot, s.teff_gspphot_lower, s.teff_gspphot_upper, "
+        "s.logg_gspphot, s.logg_gspphot_lower, s.logg_gspphot_upper, "
+        "s.mh_gspphot, s.mh_gspphot_lower, s.mh_gspphot_upper, "
+        "s.ra AS ra_source, s.dec AS dec_source, "
+        "s.parallax AS plx_source, s.parallax_error AS plx_err_source, "
+        "s.pmra, s.pmdec, s.radial_velocity, s.radial_velocity_error, s.source_id"
+    )
 
     q_main = f"""
-    SELECT {cols_nss}, {cols_source}
+    SELECT {cols_nss}, {cols_flame}, {cols_source}
     FROM gaiadr3.gaia_source AS s
     LEFT JOIN gaiadr3.nss_two_body_orbit AS n ON s.source_id = n.source_id
+    LEFT JOIN gaiadr3.astrophysical_parameters AS ap ON s.source_id = ap.source_id
     WHERE s.source_id = {source_id}
     """
 
     main_rows = execute_gaia_adql(q_main.strip(), "Gaia Core")
     if not main_rows:
+        # Lean fallback: gaia_source + FLAME only (no NSS join).
+        q_fallback = f"""
+        SELECT {cols_flame}, {cols_source}
+        FROM gaiadr3.gaia_source AS s
+        LEFT JOIN gaiadr3.astrophysical_parameters AS ap ON s.source_id = ap.source_id
+        WHERE s.source_id = {source_id}
+        """
+        main_rows = execute_gaia_adql(q_fallback.strip(), "Gaia Core (source+FLAME)")
+    if not main_rows:
         return None
+
+    # NSS acceleration π/σ as a separate job (avoids heavy multi-join 500s).
+    q_acc = f"""
+    SELECT parallax AS acc_parallax, parallax_error AS acc_parallax_error
+    FROM gaiadr3.nss_acceleration_astro
+    WHERE source_id = {source_id}
+    """
+    acc_rows = execute_gaia_adql(q_acc.strip(), "Gaia NSS acceleration")
+    if acc_rows:
+        for k, v in acc_rows[0].items():
+            if k not in main_rows[0] or main_rows[0].get(k) is None:
+                main_rows[0][k] = v
 
     base = main_rows[0]
     ra = base.get("ra") if base.get("ra") else base.get("ra_source")
     dec = base.get("dec") if base.get("dec") else base.get("dec_source")
-    plx = base.get("parallax") if base.get("parallax") else base.get("plx_source")
+    plx, _plx_err = _coalesce_parallax_from_row(base)
     pmra = base.get("pmra", 0.0)
     pmdec = base.get("pmdec", 0.0)
     rv_est = base.get("radial_velocity", 0.0)
@@ -267,12 +360,14 @@ def process_query_results(main_rows, unified_external_rows):
     except (TypeError, ValueError):
         source_id_meta = 0
 
+    plx_coalesced, plx_err_coalesced = _coalesce_parallax_from_row(base)
+
     metadata = {
         "Source_ID": source_id_meta,
         "RA": get_val(base, "ra", get_val(base, "ra_source")),
         "Dec": get_val(base, "dec", get_val(base, "dec_source")),
-        "Parallax": get_val(base, "parallax", get_val(base, "plx_source")),
-        "Parallax_Error": get_val(base, "parallax_error"),
+        "Parallax": plx_coalesced,
+        "Parallax_Error": plx_err_coalesced,
         "PMRA": get_val(base, "pmra"),
         "PMDec": get_val(base, "pmdec"),
         "RUWE": get_val(base, "ruwe"),
@@ -285,6 +380,8 @@ def process_query_results(main_rows, unified_external_rows):
         "MH": get_val(base, "mh_gspphot"),
         "MH_Lower": get_val(base, "mh_gspphot_lower"),
         "MH_Upper": get_val(base, "mh_gspphot_upper"),
+        "Mass_FLAME": get_val(base, "mass_flame"),
+        "Age_FLAME": get_val(base, "age_flame"),
         "Radial_Velocity": get_val(base, "radial_velocity"),
         "Radial_Velocity_Error": get_val(base, "radial_velocity_error"),
         "NSS_Solution_Type": base.get("nss_solution_type", "None"),
@@ -315,6 +412,12 @@ def process_query_results(main_rows, unified_external_rows):
         "G_Thiele_Innes": get_val(base, "g_thiele_innes"),
         "G_Thiele_Innes_Error": get_val(base, "g_thiele_innes_error"),
     }
+
+    flags_raw = base.get("flags_flame")
+    if flags_raw is not None and not np.ma.is_masked(flags_raw):
+        flag_s = str(flags_raw).strip()
+        if flag_s and flag_s.lower() not in ("none", "nan", "null"):
+            metadata["Flags_FLAME"] = flag_s
 
     fill_inclination_in_metadata(metadata)
 

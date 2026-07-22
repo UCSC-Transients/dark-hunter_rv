@@ -310,21 +310,80 @@ def _pipeline_line_sort_key(basename: str) -> tuple:
     return (1, basename, basename)
 
 
+# SED Phase 4 keys written into [GAIA METADATA]; preserved across pipeline rewrites.
+_SED_M1_SUMMARY_KEYS = ("M1", "m1_msun", "M1_p16", "M1_p84")
+
+
+def _read_sed_m1_keys_from_summary(text: str) -> dict[str, object]:
+    """Extract SED M1 keys from an existing star summary body."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == "[GAIA METADATA]":
+            i += 1
+            break
+        i += 1
+    else:
+        return {}
+    out: dict[str, object] = {}
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            break
+        if ":" in line:
+            k, v = line.split(":", 1)
+            k = k.strip()
+            if k in _SED_M1_SUMMARY_KEYS:
+                raw = v.strip()
+                try:
+                    out[k] = float(raw)
+                except ValueError:
+                    out[k] = raw
+        i += 1
+    return out
+
+
 def write_star_summary(obj_id, gaia_data, pipeline_results):
     """
     Write Gaia DR3 star summary. Merges [PIPELINE RESULTS] with any existing file on disk
     (basename-keyed) so batch diagnose runs that invoke the pipeline once per spectrum do not
     overwrite previous epochs.
+
+    Preserves SED-derived ``M1`` / ``m1_msun`` / ``M1_p16`` / ``M1_p84`` in
+    ``[GAIA METADATA]`` when Gaia metadata does not already supply those keys
+    (UCSC-Transients/dark-hunter_rv#84).
+
+    When ``gaia_data`` is missing (live Gaia query failed), keeps the previous
+    ``[GAIA METADATA]`` and ``[EXTERNAL RV DATA]`` from disk instead of wiping them
+    to ``Not Found or Query Failed``.
     """
+    from .gaia_utils import (
+        parse_external_rvs_from_star_summary,
+        parse_gaia_metadata_from_star_summary,
+    )
+
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     outfile = config.OUTPUT_DIR / f"Gaia_DR3_{obj_id}_summary.txt"
 
     merged: dict[str, str] = {}
+    preserved_m1: dict[str, object] = {}
+    preserved_meta: dict | None = None
+    preserved_ext: list = []
     if outfile.exists():
         try:
-            merged = _parse_star_summary_pipeline_lines(outfile.read_text())
+            existing_text = outfile.read_text()
+            merged = _parse_star_summary_pipeline_lines(existing_text)
+            preserved_m1 = _read_sed_m1_keys_from_summary(existing_text)
+            preserved_meta = parse_gaia_metadata_from_star_summary(outfile)
+            preserved_ext = parse_external_rvs_from_star_summary(outfile)
         except OSError:
             merged = {}
+            preserved_m1 = {}
+            preserved_meta = None
+            preserved_ext = []
 
     for res in pipeline_results:
         bn = Path(str(res["file"])).name
@@ -332,13 +391,25 @@ def write_star_summary(obj_id, gaia_data, pipeline_results):
 
     ordered = sorted(merged.keys(), key=_pipeline_line_sort_key)
 
+    live_meta = gaia_data.get("metadata") if gaia_data else None
+    if not live_meta and preserved_meta:
+        logging.warning(
+            "Gaia_DR3_%s: live Gaia query missing; preserving existing [GAIA METADATA]",
+            obj_id,
+        )
+        gaia_data = {
+            "metadata": preserved_meta,
+            "external_rvs": list(preserved_ext),
+        }
+        live_meta = preserved_meta
+
     with open(outfile, "w") as f:
         f.write(f"### STAR SUMMARY: {obj_id} ###\n\n")
 
         # 1. Metadata from Gaia (Strict Key: Value format)
-        if gaia_data and gaia_data.get("metadata"):
+        if live_meta:
             f.write("[GAIA METADATA]\n")
-            m = gaia_data["metadata"]
+            m = live_meta
 
             for key, val in m.items():
                 if isinstance(val, float):
@@ -349,13 +420,37 @@ def write_star_summary(obj_id, gaia_data, pipeline_results):
                 else:
                     f.write(f"{key}: {val}\n")
 
+            # Re-emit SED M1 keys unless Gaia already provided them.
+            meta_keys_lower = {str(k).lower() for k in m.keys()}
+            for key in _SED_M1_SUMMARY_KEYS:
+                if key.lower() in meta_keys_lower:
+                    continue
+                if key not in preserved_m1:
+                    continue
+                val = preserved_m1[key]
+                if isinstance(val, float):
+                    if np.isfinite(val):
+                        f.write(f"{key}: {val:.8f}\n")
+                else:
+                    f.write(f"{key}: {val}\n")
+
         else:
             f.write("[GAIA METADATA]\nNot Found or Query Failed.\n")
+            for key in _SED_M1_SUMMARY_KEYS:
+                if key not in preserved_m1:
+                    continue
+                val = preserved_m1[key]
+                if isinstance(val, float) and np.isfinite(val):
+                    f.write(f"{key}: {val:.8f}\n")
+                elif val is not None:
+                    f.write(f"{key}: {val}\n")
 
         # 2. External Data (always re-merge manual LITERATURE_* from CSV)
         external_rvs = []
         if gaia_data and gaia_data.get("external_rvs"):
             external_rvs = list(gaia_data["external_rvs"])
+        elif preserved_ext:
+            external_rvs = list(preserved_ext)
         external_rvs = merge_manual_literature(obj_id, external_rvs)
         f.write("\n[EXTERNAL RV DATA]\n")
         f.write("# Telescope | MJD | RV (km/s) | Err (km/s) | Flag/ID\n")
