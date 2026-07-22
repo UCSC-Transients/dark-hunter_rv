@@ -27,11 +27,11 @@ def plot_normalized_order(
     rv_mask_kms: float | None = None,
 ) -> None:
     """
-    Plot order flux (no forced rescaling).
+    Plot continuum-normalized order flux (continuum ≈ 1 after SED-region scale).
 
     When ``mask_wave`` / ``mask_strength`` / ``rv_mask_kms`` are given, overlay the stellar
-    mask Doppler-shifted by ``rv_mask_kms``. Mask depths use full relative strengths
-    (strongest line → continuum level 0 in flux units); no artificial 0.5 floor.
+    mask Doppler-shifted by ``rv_mask_kms``. Mask continuum stays at 1; line depths use
+    native mask strengths (no amplitude rescaling, no multiply by flux continuum).
     """
     outpath = Path(outpath)
     outpath.parent.mkdir(parents=True, exist_ok=True)
@@ -47,28 +47,24 @@ def plot_normalized_order(
         and rv_mask_kms is not None
         and np.isfinite(float(rv_mask_kms))
     ):
-        trans = _mask_transmission_shifted_full_depth(
+        trans = _mask_transmission_shifted_native(
             wave,
             np.asarray(mask_wave, float),
             np.asarray(mask_strength, float),
             float(rv_mask_kms),
         )
         if trans is not None:
-            finite = np.isfinite(flux_norm)
-            cont = float(np.nanmedian(flux_norm[finite])) if np.any(finite) else 1.0
-            if not np.isfinite(cont) or cont == 0.0:
-                cont = 1.0
-            # Map transmission→flux units at local continuum; do not compress line depths.
             ax.plot(
                 wave,
-                cont * trans,
+                trans,
                 "b-",
                 lw=0.85,
                 alpha=0.85,
                 label=f"mask (shifted, RV={float(rv_mask_kms):+.2f} km/s)",
             )
+    ax.axhline(1.0, color="gray", ls=":")
     ax.set_xlabel("Wavelength (A)")
-    ax.set_ylabel("Flux")
+    ax.set_ylabel("Norm flux")
     ax.set_title(title)
     ax.legend(fontsize=8)
     fig.tight_layout()
@@ -654,7 +650,7 @@ def _h_beta_legend_rv_line(label: str, rv: float, err: float) -> str:
     return f"{label}: n/a"
 
 
-def _mask_transmission_shifted_full_depth(
+def _mask_transmission_shifted_native(
     nw: np.ndarray,
     mask_wave: np.ndarray,
     mask_strength: np.ndarray,
@@ -663,8 +659,7 @@ def _mask_transmission_shifted_full_depth(
     """
     Stellar-mask transmission on ``nw``, Doppler-shifted by ``rv_mask_kms``.
 
-    Line depths use full relative strengths (``|s|/s_max``); strongest line reaches 0.
-    No artificial amplitude cap (e.g. 0.45) and no clip that floors the mask near 0.5.
+    Continuum level is 1. Line depths use native mask strengths (no ``/s_max`` rescale).
     Overlapping lines may go slightly below 0.
     """
     nw = np.asarray(nw, float)
@@ -677,16 +672,25 @@ def _mask_transmission_shifted_full_depth(
     beta = 1.0 + float(rv_mask_kms) / config.C_KMS
     trans = np.ones_like(nw, dtype=float)
     sig_a = max(0.05, float(np.nanmedian(np.abs(np.diff(np.sort(nw))))) * 1.8)
-    smax = float(np.nanmax(np.abs(ms))) + 1e-9
     for w0, s in zip(mw, ms):
         w_shift = float(w0) * beta
         if w_shift < float(np.min(nw)) or w_shift > float(np.max(nw)):
             continue
-        amp = abs(float(s)) / smax
+        amp = abs(float(s))
         if not np.isfinite(amp) or amp <= 0.0:
             continue
         trans -= amp * np.exp(-0.5 * ((nw - w_shift) / sig_a) ** 2)
     return trans
+
+
+def _mask_transmission_shifted_full_depth(
+    nw: np.ndarray,
+    mask_wave: np.ndarray,
+    mask_strength: np.ndarray,
+    rv_mask_kms: float,
+) -> np.ndarray | None:
+    """Deprecated alias: native strengths with continuum=1 (same as ``_mask_transmission_shifted_native``)."""
+    return _mask_transmission_shifted_native(nw, mask_wave, mask_strength, rv_mask_kms)
 
 
 def _hb_mask_pseudo_on_wavelengths(

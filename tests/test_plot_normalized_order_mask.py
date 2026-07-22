@@ -1,34 +1,65 @@
-"""Per-order norm plot can overlay stellar mask shifted by order RV."""
+"""Per-order norm plot: SED continuum scale + native-strength mask at continuum=1."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from darkhunter_rv.continuum import fit_continuum, load_sed_continuum_spans
 from darkhunter_rv.plotting import (
-    _mask_transmission_shifted_full_depth,
+    _mask_transmission_shifted_native,
     plot_normalized_order,
 )
 
 
-def test_mask_transmission_full_depth_reaches_zero() -> None:
+def test_mask_transmission_native_strength_continuum_one() -> None:
     w = np.linspace(5000.0, 5020.0, 2000)
     mw = np.array([5010.0])
-    ms = np.array([1.0])
-    trans = _mask_transmission_shifted_full_depth(w, mw, ms, rv_mask_kms=0.0)
+    ms = np.array([0.4])
+    trans = _mask_transmission_shifted_native(w, mw, ms, rv_mask_kms=0.0)
     assert trans is not None
-    assert float(np.min(trans)) == pytest.approx(0.0, abs=0.02)
-    assert float(np.min(trans)) < 0.2
+    assert float(np.median(trans)) == pytest.approx(1.0, abs=0.02)
+    assert float(np.min(trans)) == pytest.approx(0.6, abs=0.05)
+
+
+def test_continuum_none_sed_span_median_scale() -> None:
+    w = np.linspace(5000.0, 5100.0, 201)
+    flux = np.full(201, 50.0)
+    # Plateau at 100 between 5050–5070 Å
+    flux[100:141] = 100.0
+    flux[110:116] = 40.0  # absorption in continuum region
+    eflux = np.full(201, 2.0)
+    spans = [(5050.0, 5070.0)]
+    _, nf, ne = fit_continuum(w, flux, eflux, continuum_mode="none", continuum_spans=spans)
+    cont_pix = (w >= 5050.0) & (w <= 5070.0) & (flux > 50.0)
+    assert np.median(nf[cont_pix]) == pytest.approx(1.0, abs=0.05)
+    assert np.min(nf[110:116]) < 0.55
+    assert ne[0] == pytest.approx(2.0 / 100.0, rel=0.01)
+
+
+def test_load_sed_continuum_spans(tmp_path: Path) -> None:
+    doc = {
+        "orders": {
+            "10": {"continuum_regions": [[5000.0, 5001.0], [5010.0, 5012.0]]},
+            "11": {"continuum_regions": [[5200.0, 5205.0]]},
+        }
+    }
+    path = tmp_path / "regions.json"
+    path.write_text(json.dumps(doc))
+    spans = load_sed_continuum_spans(path)
+    assert len(spans) == 3
+    assert spans[0] == (5000.0, 5001.0)
 
 
 def test_plot_normalized_order_with_shifted_mask(tmp_path: Path) -> None:
     w = np.linspace(5000.0, 5020.0, 400)
-    flux = np.full_like(w, 80.0)
-    flux[180:220] = 40.0
+    flux = np.ones_like(w)
+    flux[180:220] = 0.5
     mw = np.array([5005.0, 5010.0, 5015.0])
-    ms = np.array([1.0, 0.8, 0.6])
+    ms = np.array([0.5, 0.4, 0.3])
     out = tmp_path / "norm_mask.png"
     plot_normalized_order(
         w,

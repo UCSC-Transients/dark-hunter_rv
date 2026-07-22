@@ -82,6 +82,18 @@ VSINI_WIDE_GRID_CAP_KMS = 160.0
 COOL_SPLINE_EXCLUDE_NEAR_LINES_WIDTH = 55.0
 HOT_SPLINE_EXCLUDE_NEAR_LINES_WIDTH = 78.0
 
+# SED blaze picker regions JSON (continuum_regions spans) for continuum_mode=none median scale.
+# Override with DARKHUNTER_SED_REGIONS_JSON or CLI --sed-regions-json.
+_SED_REGIONS_ENV = os.environ.get("DARKHUNTER_SED_REGIONS_JSON")
+if _SED_REGIONS_ENV:
+    SED_REGIONS_JSON: Path | None = Path(_SED_REGIONS_ENV)
+else:
+    _sed_default = Path(
+        "/Users/rfoley/darkhunter/seds/dark-hunter_sed/output/masks/"
+        "regions_Gaia_DR3_77413727493690112_epoch_1.json"
+    )
+    SED_REGIONS_JSON = _sed_default if _sed_default.is_file() else None
+
 # Shared per-order sinc² blaze (``calibration/blaze_orders_apf.json``): mask CCF uses blaze-only;
 # template FFT and strong-line paths use blaze then spline. See ``pipeline._resolve_continuum_mode``.
 MASK_CONTINUUM_MODE = "sinc_blaze_only"
