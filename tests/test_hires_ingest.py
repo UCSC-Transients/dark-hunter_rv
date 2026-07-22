@@ -128,16 +128,15 @@ def test_barycentric_wavelength_shift() -> None:
     assert shifted[0] == pytest.approx(wave[0] * (1.0 - 14.712206 / config.C_KMS))
 
 
-def test_continuum_none_median_scale() -> None:
+def test_continuum_none_passthrough() -> None:
     w = np.linspace(5000.0, 5100.0, 200)
     flux = np.full(200, 80.0)
     flux[80:90] = 40.0
     eflux = np.full(200, 4.0)
     nw, nf, ne = fit_continuum(w, flux, eflux, continuum_mode="none")
     assert np.allclose(nw, w)
-    assert np.median(nf) == pytest.approx(1.0, abs=1e-6)
-    assert np.min(nf) == pytest.approx(0.5, abs=1e-6)
-    assert np.allclose(ne, eflux / 80.0)
+    assert np.allclose(nf, flux)
+    assert np.allclose(ne, eflux)
 
 
 def test_parse_makee_and_targname() -> None:

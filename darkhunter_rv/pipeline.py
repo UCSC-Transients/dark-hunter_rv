@@ -851,8 +851,21 @@ def process_spectrum(
         w, f, e = prep["w"], prep["f"], prep["e"]
         nw, nf, ne = prep["nw"], prep["nf"], prep["ne"]
         nw_tpl, nf_tpl = _prep_template_norm(prep)
-        line_obs = rv_core.mask_line_flux_in_excluded_wavelengths(nw, 1.0 - nf)
-        line_obs_tpl = rv_core.mask_line_flux_in_excluded_wavelengths(nw_tpl, 1.0 - nf_tpl)
+        mask_cont_mode = _resolve_continuum_mode(args, "mask")
+        if mask_cont_mode == "none":
+            med_f = float(np.nanmedian(nf[np.isfinite(nf)])) if np.any(np.isfinite(nf)) else np.nan
+            line_flux = (med_f - nf) if np.isfinite(med_f) else (1.0 - nf)
+            med_t = (
+                float(np.nanmedian(nf_tpl[np.isfinite(nf_tpl)]))
+                if np.any(np.isfinite(nf_tpl))
+                else np.nan
+            )
+            line_flux_tpl = (med_t - nf_tpl) if np.isfinite(med_t) else (1.0 - nf_tpl)
+        else:
+            line_flux = 1.0 - nf
+            line_flux_tpl = 1.0 - nf_tpl
+        line_obs = rv_core.mask_line_flux_in_excluded_wavelengths(nw, line_flux)
+        line_obs_tpl = rv_core.mask_line_flux_in_excluded_wavelengths(nw_tpl, line_flux_tpl)
 
         bvec = io_utils.lookup_bias(bias, chunk_key)
 
@@ -1723,7 +1736,7 @@ def main(argv: list[str] | None = None) -> None:
             "split (default): mask CCF uses sinc_blaze_only, template/strong use sinc_blaze when "
             "calibration/blaze_orders_apf.json is present; spline: legacy envelope only; "
             "sinc_blaze / sinc_blaze_only: same mode for all lanes; "
-            "none: median-scale only (already-deblazed spectra, e.g. HIRES)"
+            "none: no continuum fit/rescale (already-deblazed spectra, e.g. HIRES)"
         ),
     )
     parser.add_argument(
