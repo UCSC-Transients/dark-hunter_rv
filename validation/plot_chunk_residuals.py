@@ -67,13 +67,20 @@ def _ordered_chunks(chunk_keys: list[str]) -> list[str]:
     return sorted(set(chunk_keys), key=_chunk_sort_key)
 
 
+def _finite_positive_err_mask(rv: np.ndarray, err: np.ndarray) -> np.ndarray:
+    """True where RV and uncertainty are usable for inverse-variance weighting."""
+    rv = np.asarray(rv, float)
+    err = np.asarray(err, float)
+    return np.isfinite(rv) & np.isfinite(err) & (err > 0) & (err < 1e20)
+
+
 def _exposure_rv_weighted(rv: np.ndarray, err: np.ndarray) -> float:
-    ok = np.isfinite(rv) & np.isfinite(err) & (err > 0) & (err < 1e20)
+    """Inverse-variance exposure RV; NaN if no points have a usable error."""
+    ok = _finite_positive_err_mask(rv, err)
     if not np.any(ok):
-        v = rv[np.isfinite(rv)]
-        return float(np.mean(v)) if len(v) else float("nan")
-    v = rv[ok].astype(float)
-    e = err[ok].astype(float)
+        return float("nan")
+    v = np.asarray(rv, float)[ok]
+    e = np.asarray(err, float)[ok]
     w = 1.0 / (e**2)
     return float(np.sum(w * v) / np.sum(w))
 
@@ -153,13 +160,24 @@ def apply_spectrum_chunk_outlier_clip(
         idx = g.index.to_numpy()
         rv = g["rv_kms"].astype(float).to_numpy()
         err = g["rv_err_kms"].astype(float).to_numpy()
-        keep = iterative_spectrum_chunk_clip_mask(
-            rv, err, nsigma=nsigma, max_delta_kms=max_delta_kms
-        )
+        # Missing / non-positive errors never enter IVW averages or clip means.
+        usable = _finite_positive_err_mask(rv, err)
+        keep = np.zeros(len(rv), dtype=bool)
+        if np.any(usable):
+            keep_u = iterative_spectrum_chunk_clip_mask(
+                rv[usable],
+                err[usable],
+                nsigma=nsigma,
+                max_delta_kms=max_delta_kms,
+            )
+            keep[np.where(usable)[0]] = keep_u
         out.loc[idx, "chunk_kept"] = keep
         if not np.any(keep):
             continue
         exp_rv = _exposure_rv_weighted(rv[keep], err[keep])
+        if not np.isfinite(exp_rv):
+            out.loc[idx, "chunk_kept"] = False
+            continue
         out.loc[idx[keep], "exposure_rv_kms"] = exp_rv
         out.loc[idx[keep], "residual_kms"] = rv[keep] - exp_rv
 
@@ -170,15 +188,17 @@ def _weighted_mean_and_errors(
     values: np.ndarray,
     errs: np.ndarray,
 ) -> tuple[float, float, float]:
-    """Return (weighted_mean, statistical_err, intrinsic_scatter)."""
-    ok = np.isfinite(values) & np.isfinite(errs) & (errs > 0) & (errs < 1e20)
+    """
+    Return (weighted_mean, statistical_err, intrinsic_scatter).
+
+    Only points with finite positive ``errs`` enter the IVW. If none qualify,
+    all three returns are NaN (no unweighted fallback).
+    """
+    ok = _finite_positive_err_mask(values, errs)
     if not np.any(ok):
-        v = values[np.isfinite(values)]
-        if len(v) == 0:
-            return float("nan"), float("nan"), float("nan")
-        return float(np.mean(v)), float("nan"), float(np.std(v, ddof=1)) if len(v) > 1 else 0.0
-    v = values[ok].astype(float)
-    e = errs[ok].astype(float)
+        return float("nan"), float("nan"), float("nan")
+    v = np.asarray(values, float)[ok]
+    e = np.asarray(errs, float)[ok]
     w = 1.0 / (e**2)
     mu = float(np.sum(w * v) / np.sum(w))
     stat = float(1.0 / np.sqrt(np.sum(w)))
@@ -374,19 +394,22 @@ def _summarize_chunks_per_object(
 ) -> pd.DataFrame:
     rows = []
     for ck, g in obj_df.groupby("chunk_key"):
-        n_meas = int(len(g))
+        resid = g["residual_kms"].astype(float).values
+        errs = g["rv_err_kms"].astype(float).values
+        usable = _finite_positive_err_mask(resid, errs)
+        n_meas = int(np.count_nonzero(usable))
         if n_meas < min_measurements:
             continue
-        mu, stat, intrinsic = _weighted_mean_and_errors(
-            g["residual_kms"].astype(float).values,
-            g["rv_err_kms"].astype(float).values,
-        )
+        mu, stat, intrinsic = _weighted_mean_and_errors(resid, errs)
+        if not np.isfinite(mu) or not np.isfinite(stat):
+            continue
+        g_u = g.iloc[np.flatnonzero(usable)]
         rows.append(
             {
                 "chunk_key": str(ck),
                 "chunk_order": _chunk_sort_key(str(ck))[0],
                 "n_measurements": n_meas,
-                "n_spectra": int(g["file"].nunique()),
+                "n_spectra": int(g_u["file"].nunique()),
                 "weighted_mean_residual_kms": mu,
                 "statistical_err_kms": stat,
                 "intrinsic_scatter_kms": intrinsic,

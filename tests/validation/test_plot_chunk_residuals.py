@@ -34,6 +34,54 @@ def test_weighted_mean_and_errors() -> None:
     assert intrinsic >= 0
 
 
+def test_weighted_mean_requires_errors() -> None:
+    mu, stat, intrinsic = _weighted_mean_and_errors(
+        np.array([0.1, 0.2]),
+        np.array([np.nan, np.nan]),
+    )
+    assert not np.isfinite(mu)
+    assert not np.isfinite(stat)
+    assert not np.isfinite(intrinsic)
+
+    mu2, stat2, _ = _weighted_mean_and_errors(
+        np.array([0.1, 0.9]),
+        np.array([0.05, np.nan]),
+    )
+    assert mu2 == pytest.approx(0.1)
+    assert stat2 == pytest.approx(0.05)
+
+
+def test_summarize_skips_chunks_without_errors() -> None:
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {"chunk_key": "1", "file": "a", "residual_kms": 0.1, "rv_err_kms": 0.05},
+            {"chunk_key": "2", "file": "a", "residual_kms": 5.0, "rv_err_kms": np.nan},
+            {"chunk_key": "3", "file": "a", "residual_kms": -0.2, "rv_err_kms": 0.0},
+        ]
+    )
+    s = _summarize_chunks_per_object(df, min_measurements=1)
+    assert list(s["chunk_key"].astype(str)) == ["1"]
+    assert np.isfinite(float(s.iloc[0]["statistical_err_kms"]))
+
+
+def test_apply_clip_drops_missing_err_from_kept() -> None:
+    import pandas as pd
+
+    df = pd.DataFrame(
+        [
+            {"file": "a", "rv_kms": 10.0, "rv_err_kms": 0.05, "exposure_rv_kms": 10.0, "residual_kms": 0.0},
+            {"file": "a", "rv_kms": 10.1, "rv_err_kms": 0.05, "exposure_rv_kms": 10.0, "residual_kms": 0.1},
+            {"file": "a", "rv_kms": 50.0, "rv_err_kms": np.nan, "exposure_rv_kms": 10.0, "residual_kms": 40.0},
+        ]
+    )
+    out = apply_spectrum_chunk_outlier_clip(df, nsigma=10.0, max_delta_kms=20.0)
+    assert not bool(out.loc[2, "chunk_kept"])
+    assert bool(out.loc[0, "chunk_kept"]) and bool(out.loc[1, "chunk_kept"])
+
+
+
 def test_iterative_clip_removes_sigma_outlier() -> None:
     rv = np.array([10.0, 10.1, 10.05, 50.0])
     err = np.array([0.05, 0.05, 0.05, 0.05])
