@@ -65,7 +65,10 @@ def test_hires_instrument_profile() -> None:
     assert inst.num_orders == 49
     assert inst.resolving_power == 45000.0
     assert inst.header_keywords["mjd"] == "MJD"
-    assert inst.bias_file is None
+    assert inst.bias_file is not None
+    assert Path(inst.bias_file).name == "bias_statistics_hires.txt"
+    assert 5 in inst.bad_orders
+    assert 0 in inst.bad_orders
 
 
 def test_hires_eflux_relative_vs_absolute() -> None:
@@ -148,13 +151,17 @@ def test_parse_makee_and_targname() -> None:
     assert parsed.outfile == "j560"
     assert parsed.frameno == 64
     assert targname_matches_source_id("155154202785114", 1551542027851147904)
+    assert targname_matches_source_id("GaiaDR3_2200363", 2200363873769396992)
     assert not targname_matches_source_id("999", 1551542027851147904)
-    ok, _ = crosscheck_targname("155154202785114", 1551542027851147904)
+    ok, msg = crosscheck_targname("155154202785114", 1551542027851147904)
     assert ok
-    bad, msg = crosscheck_targname("999", 1551542027851147904)
-    assert not bad
-    forced, _ = crosscheck_targname("999", 1551542027851147904, force=True)
-    assert forced
+    assert "confirms" in msg
+    # Observatory-truncated / wrong TARGNAME must not reject coordinate match.
+    ok_mismatch, msg_mismatch = crosscheck_targname("999", 1551542027851147904)
+    assert ok_mismatch
+    assert "using coordinates" in msg_mismatch
+    ok_force, _ = crosscheck_targname("999", 1551542027851147904, force=True)
+    assert ok_force
 
 
 def test_pick_gaia_match_tiebreak() -> None:
