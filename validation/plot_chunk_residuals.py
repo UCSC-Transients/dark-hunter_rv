@@ -76,6 +76,22 @@ def _finite_positive_err_mask(rv: np.ndarray, err: np.ndarray) -> np.ndarray:
     return np.isfinite(rv) & np.isfinite(err) & (err > 0) & (err < 1e20)
 
 
+def _exposure_rv_equal_weight(rv: np.ndarray, err: np.ndarray) -> float:
+    """
+    Equal-weight mean of chunks with usable errors.
+
+    Used to demean order/chunk RVs before bias residuals. Inverse-variance
+    demeaning is wrong here: when the order bias curve is structured, IVW
+    absorbs a weight-dependent projection of that curve into the zero point,
+    so blue-heavy vs red-heavy spectra get opposite residual offsets relative
+    to the sample order mean.
+    """
+    ok = _finite_positive_err_mask(rv, err)
+    if not np.any(ok):
+        return float("nan")
+    return float(np.mean(np.asarray(rv, float)[ok]))
+
+
 def _exposure_rv_weighted(rv: np.ndarray, err: np.ndarray) -> float:
     """Inverse-variance exposure RV; NaN if no points have a usable error."""
     ok = _finite_positive_err_mask(rv, err)
@@ -98,7 +114,7 @@ def iterative_spectrum_chunk_clip_mask(
     """
     Per-spectrum iterative clip until convergence:
 
-    1. |RV_i − weighted_mean(kept)| > max_delta_kms
+    1. |RV_i − equal_weight_mean(kept)| > max_delta_kms
     2. |RV_i − mean(RV_{j≠i})| > nsigma × RMS(RV_{j≠i})  (leave-one-out)
     """
     rv = np.asarray(rv, float)
@@ -118,10 +134,10 @@ def iterative_spectrum_chunk_clip_mask(
             break
 
         if use_delta and len(active) >= 1:
-            wmean = _exposure_rv_weighted(rv[keep], err[keep])
-            if np.isfinite(wmean):
+            center = _exposure_rv_equal_weight(rv[keep], err[keep])
+            if np.isfinite(center):
                 for i in active:
-                    if abs(float(rv[i]) - wmean) > float(max_delta_kms):
+                    if abs(float(rv[i]) - center) > float(max_delta_kms):
                         keep[i] = False
                         removed_any = True
 
@@ -176,7 +192,7 @@ def apply_spectrum_chunk_outlier_clip(
         out.loc[idx, "chunk_kept"] = keep
         if not np.any(keep):
             continue
-        exp_rv = _exposure_rv_weighted(rv[keep], err[keep])
+        exp_rv = _exposure_rv_equal_weight(rv[keep], err[keep])
         if not np.isfinite(exp_rv):
             out.loc[idx, "chunk_kept"] = False
             continue

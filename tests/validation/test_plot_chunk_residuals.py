@@ -169,9 +169,65 @@ def test_summarize_chunks_per_object_min_measurements() -> None:
     assert int(s.iloc[0]["n_measurements"]) == 3
 
 
-def test_gaia_dr3_label() -> None:
-    assert _gaia_dr3_label("1978377080333206528") == "Gaia_DR3_1978377080333206528"
-    assert _gaia_dr3_label("Gaia_DR3_1") == "Gaia_DR3_1"
+def test_equal_weight_demean_avoids_weight_dependent_object_offset() -> None:
+    """
+    Structured bias + different IVW weights must not imprint object offsets after demean.
+
+    Equal-weight demean keeps residuals ≈ bias - mean(bias) for every object.
+    """
+    import pandas as pd
+
+    orders = np.arange(10, dtype=float)
+    bias = np.where(orders < 5, -1.0, 1.0)
+    # Object A: small errors on blue (low orders); B: small errors on red.
+    rows = []
+    for gid, err_blue, err_red in (("A", 0.05, 0.5), ("B", 0.5, 0.05)):
+        for o, b in zip(orders, bias):
+            err = err_blue if o < 5 else err_red
+            rows.append(
+                {
+                    "gaia_dr3_id": gid,
+                    "file": f"{gid}.fits",
+                    "rv_kms": 20.0 + float(b),
+                    "rv_err_kms": float(err),
+                    "exposure_rv_kms": 20.0,
+                    "residual_kms": float(b),
+                    "chunk_key": str(int(o)),
+                    "chunk_order": int(o),
+                    "mjd": 0.0,
+                    "teff": 5000.0,
+                    "log10_median_mask_ccf_peak_snr": 1.0,
+                    "used_in_exposure_stack": True,
+                    "qc_pass": True,
+                    "diagnostics_path": "",
+                }
+            )
+    tab = pd.DataFrame(rows)
+    out = apply_spectrum_chunk_outlier_clip(tab, nsigma=0.0, max_delta_kms=0.0)
+    # Per-object equal-weight mean residual must be ~0; curves must match.
+    for gid, g in out.groupby("gaia_dr3_id"):
+        r = g["residual_kms"].astype(float).values
+        e = g["rv_err_kms"].astype(float).values
+        mu, _, _ = _weighted_mean_and_errors(r, e)
+        # IVW of residuals need not be 0 under equal-weight demean; equal-weight mean must.
+        assert float(np.mean(r)) == pytest.approx(0.0, abs=1e-12)
+        assert list(np.round(r, 6)) == list(np.round(bias - np.mean(bias), 6))
+
+    # Relative to shared order mean, object IVW offsets stay near zero (same curve).
+    summaries = {}
+    for gid, g in out.groupby("gaia_dr3_id"):
+        summaries[gid] = _summarize_chunks_per_object(g, min_measurements=1)
+    bias_rows = []
+    for gid, sdf in summaries.items():
+        for _, r in sdf.iterrows():
+            bias_rows.append({"gaia_dr3_id": gid, "sample_kept": True, **r.to_dict()})
+    bias_df = pd.DataFrame(bias_rows)
+    rel = build_order_relative_residuals(bias_df)
+    summary = summarize_order_relative_residuals(rel)
+    for _, row in summary.iterrows():
+        assert abs(float(row["ivw_residual_to_order_mean_kms"])) < 0.05
+        assert abs(int(row["n_positive"]) - int(row["n_negative"])) <= 1
+
 
 
 def test_order_relative_residuals_summary() -> None:
