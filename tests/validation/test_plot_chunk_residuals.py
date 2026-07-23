@@ -6,12 +6,15 @@ import pytest
 
 from validation.plot_chunk_residuals import (
     _chunk_sort_key,
+    _gaia_dr3_label,
     _ordered_chunks,
     _summarize_chunks_per_object,
     _weighted_mean_and_errors,
     apply_sample_object_bias_clip,
     apply_spectrum_chunk_outlier_clip,
+    build_order_relative_residuals,
     iterative_spectrum_chunk_clip_mask,
+    summarize_order_relative_residuals,
 )
 
 
@@ -164,3 +167,67 @@ def test_summarize_chunks_per_object_min_measurements() -> None:
     assert len(s) == 1
     assert s.iloc[0]["chunk_key"] == "1"
     assert int(s.iloc[0]["n_measurements"]) == 3
+
+
+def test_gaia_dr3_label() -> None:
+    assert _gaia_dr3_label("1978377080333206528") == "Gaia_DR3_1978377080333206528"
+    assert _gaia_dr3_label("Gaia_DR3_1") == "Gaia_DR3_1"
+
+
+def test_order_relative_residuals_summary() -> None:
+    import pandas as pd
+
+    bias = pd.DataFrame(
+        [
+            {
+                "gaia_dr3_id": "1",
+                "chunk_key": "10",
+                "chunk_order": 10,
+                "weighted_mean_residual_kms": 1.0,
+                "statistical_err_kms": 0.1,
+                "intrinsic_scatter_kms": 0.0,
+                "sample_kept": True,
+            },
+            {
+                "gaia_dr3_id": "2",
+                "chunk_key": "10",
+                "chunk_order": 10,
+                "weighted_mean_residual_kms": -1.0,
+                "statistical_err_kms": 0.1,
+                "intrinsic_scatter_kms": 0.0,
+                "sample_kept": True,
+            },
+            {
+                "gaia_dr3_id": "1",
+                "chunk_key": "20",
+                "chunk_order": 20,
+                "weighted_mean_residual_kms": 0.5,
+                "statistical_err_kms": 0.1,
+                "intrinsic_scatter_kms": 0.0,
+                "sample_kept": True,
+            },
+            {
+                "gaia_dr3_id": "2",
+                "chunk_key": "20",
+                "chunk_order": 20,
+                "weighted_mean_residual_kms": -0.5,
+                "statistical_err_kms": 0.1,
+                "intrinsic_scatter_kms": 0.0,
+                "sample_kept": True,
+            },
+        ]
+    )
+    rel = build_order_relative_residuals(bias)
+    assert "residual_to_order_mean_kms" in rel.columns
+    # Equal-weight IVW sample mean at each chunk is 0 → deltas equal raw biases.
+    g1 = rel[rel["gaia_dr3_id"] == "1"]
+    assert float(g1.loc[g1["chunk_key"] == "10", "residual_to_order_mean_kms"].iloc[0]) == pytest.approx(1.0)
+    summary = summarize_order_relative_residuals(rel)
+    assert set(summary["gaia_dr3_id"].astype(str)) == {"1", "2"}
+    row1 = summary[summary["gaia_dr3_id"] == "1"].iloc[0]
+    assert int(row1["n_positive"]) == 2
+    assert int(row1["n_negative"]) == 0
+    assert float(row1["ivw_residual_to_order_mean_kms"]) == pytest.approx(0.75)
+    row2 = summary[summary["gaia_dr3_id"] == "2"].iloc[0]
+    assert int(row2["n_negative"]) == 2
+    assert float(row2["ivw_residual_to_order_mean_kms"]) == pytest.approx(-0.75)
