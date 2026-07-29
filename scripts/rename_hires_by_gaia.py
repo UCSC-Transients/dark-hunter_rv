@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Rename HIRES Makee chip FITS files by Gaia DR3 ID from coordinates.
 
-Groups ``[bir]<outfile>.<frameno>.fits`` triplets, cone-searches Gaia DR3,
-cross-checks ``TARGNAME`` (digit prefix or SIMBAD name), writes ``GAIADR3ID`` and
-``BJD`` headers, then renames to ``Gaia_DR3_<id>_{b|i|r}_epoch_<N>.fits``.
+Groups ``[bir]<outfile>.<frameno>.fits`` triplets and cone-searches Gaia DR3.
+The coordinate match is always the adopted source_id. ``TARGNAME`` is only a
+confirmation when it equals a truncated form of that id (observatories truncate
+target names); a mismatch does not override coordinates. Optional SIMBAD
+resolution of non-Gaia ``TARGNAME`` values is logged the same way.
+
+Writes ``GAIADR3ID`` and ``BJD`` headers, then renames to
+``Gaia_DR3_<id>_{b|i|r}_epoch_<N>.fits``.
 
 Default is dry-run; pass ``--apply`` to write headers and rename.
 """
@@ -34,6 +39,11 @@ MAKEE_CHIP_RE = re.compile(
     re.IGNORECASE,
 )
 DIGIT_TARG_RE = re.compile(r"^(\d{8,19})$")
+# Truncated Makee labels like GaiaDR3_2200363 (digits are a source_id prefix).
+GAIA_DR3_PREFIX_TARG_RE = re.compile(
+    r"^(?:Gaia[_\s]?DR3[_\s]?|GaiaDR3_)(\d{7,19})$",
+    re.IGNORECASE,
+)
 GAIA_DR3_IN_IDS_RE = re.compile(r"Gaia\s*DR3\s+(\d{16,19})", re.IGNORECASE)
 
 
@@ -86,9 +96,15 @@ def photon_weighted_mjd(header: fits.Header) -> float:
 
 
 def targname_is_digit_prefix(targname: str) -> str | None:
-    """Return digit string if TARGNAME is an all-digit Gaia prefix, else None."""
+    """Return digit string if TARGNAME is a Gaia source_id prefix, else None.
+
+    Accepts bare digit strings and truncated Makee labels ``GaiaDR3_<digits>``.
+    """
     s = str(targname).strip()
     m = DIGIT_TARG_RE.match(s)
+    if m:
+        return m.group(1)
+    m = GAIA_DR3_PREFIX_TARG_RE.match(s)
     return m.group(1) if m else None
 
 
@@ -187,29 +203,37 @@ def crosscheck_targname(
     force: bool = False,
 ) -> tuple[bool, str]:
     """
-    Cross-check coordinate Gaia ID against TARGNAME.
+    Annotate a coordinate-matched Gaia ID using optional ``TARGNAME`` confirmation.
 
-    Digit TARGNAME: must be a prefix of source_id.
-    Non-digit: SIMBAD Gaia DR3 id must match source_id.
-    Returns (ok, message). With ``force``, mismatches still return ok=True after warning text.
+    Coordinates always win: this always returns ``ok=True``. A digit / ``GaiaDR3_*``
+    ``TARGNAME`` that is a prefix of ``source_id`` is confirmation (names are often
+    length-limited). A mismatch is logged as unconfirmed, not a rejection.
+    Non-prefix names may be checked via SIMBAD for the same confirm/unconfirmed
+    messaging. ``force`` is retained for CLI compatibility and is unused.
     """
+    del force  # CLI compatibility; TARGNAME never overrides coordinates.
     name = str(targname).strip()
     if not name:
-        msg = "empty TARGNAME; relying on coordinates only"
-        return True, msg
+        return True, "empty TARGNAME; coordinates only"
     if targname_is_digit_prefix(name) is not None:
         if targname_matches_source_id(name, source_id):
-            return True, f"TARGNAME {name} prefixes Gaia DR3 {source_id}"
-        msg = f"TARGNAME {name} does not prefix Gaia DR3 {source_id}"
-        return (True, msg + " (--force)") if force else (False, msg)
+            return True, f"TARGNAME confirms truncated Gaia DR3 {source_id}"
+        return True, (
+            f"TARGNAME {name!r} does not match truncated Gaia DR3 {source_id} "
+            "(using coordinates; TARGNAME may be truncated/wrong)"
+        )
     sim_id = simbad_gaia_dr3_id(name)
     if sim_id is None:
-        msg = f"SIMBAD found no Gaia DR3 id for TARGNAME={name!r}"
-        return (True, msg + " (--force)") if force else (False, msg)
+        return True, (
+            f"TARGNAME={name!r} not confirmed via SIMBAD "
+            f"(using coordinates → Gaia DR3 {source_id})"
+        )
     if int(sim_id) == int(source_id):
-        return True, f"SIMBAD {name!r} → Gaia DR3 {source_id}"
-    msg = f"SIMBAD {name!r} → Gaia DR3 {sim_id}, coords → {source_id}"
-    return (True, msg + " (--force)") if force else (False, msg)
+        return True, f"SIMBAD {name!r} confirms Gaia DR3 {source_id}"
+    return True, (
+        f"SIMBAD {name!r} → Gaia DR3 {sim_id}, coordinates → {source_id} "
+        "(using coordinates)"
+    )
 
 
 def discover_makee_observations(directory: Path) -> list[HiresObservation]:
@@ -304,11 +328,10 @@ def resolve_observation(
             f"{obs.outfile}.{obs.frameno} at ({obs.ra_deg:.6f},{obs.dec_deg:.6f})"
         )
     source_id = int(match["source_id"])
-    ok, msg = crosscheck_targname(obs.targname, source_id, force=force)
-    if not ok:
-        return None, f"cross-check failed: {msg}"
+    _, msg = crosscheck_targname(obs.targname, source_id, force=force)
     return source_id, (
-        f"Gaia DR3 {source_id} sep={float(match['sep']) * 3600:.2f}\" G={match['phot_g_mean_mag']}; {msg}"
+        f"Gaia DR3 {source_id} sep={float(match['sep']) * 3600:.2f}\" "
+        f"G={match['phot_g_mean_mag']}; {msg}"
     )
 
 
@@ -377,7 +400,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Rename even if TARGNAME/SIMBAD cross-check fails",
+        help="Deprecated no-op: coordinates always define the Gaia ID",
     )
     parser.add_argument(
         "-v",
