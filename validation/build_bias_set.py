@@ -106,10 +106,18 @@ def build_bias(
         kept = _sigma_clip_exposure(df, sigma=sigma_clip)
         if kept.empty:
             continue
-        w = 1.0 / np.clip(kept["rv_err_kms"].values, 1e-6, np.inf) ** 2
-        center = float(np.average(kept["rv_kms"].values, weights=w))
+        # Equal-weight demean (not IVW): IVW zero-point absorbs a weight-dependent
+        # projection of a structured order-bias curve, imprinting object-dependent
+        # residual offsets (blue-heavy vs red-heavy spectra).
+        usable = np.isfinite(kept["rv_kms"].to_numpy(dtype=float)) & np.isfinite(
+            kept["rv_err_kms"].to_numpy(dtype=float)
+        ) & (kept["rv_err_kms"].to_numpy(dtype=float) > 0)
+        if not np.any(usable):
+            continue
+        center = float(np.mean(kept.loc[usable, "rv_kms"].to_numpy(dtype=float)))
         kept = kept.copy()
         kept["resid_kms"] = kept["rv_kms"] - center
+        kept = kept.loc[usable].copy()
         kept["order"] = kept["chunk_key"].map(
             lambda ck: chunking.bias_order_from_chunk_key(str(ck))
         )

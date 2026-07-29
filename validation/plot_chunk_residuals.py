@@ -7,8 +7,10 @@ For each object with stellar-mask-applicable exposures:
 1. ``*_residuals_by_spectrum.png`` — RV_chunk − RV_exposure for every chunk and spectrum.
 2. ``*_chunk_weighted_mean.png`` — per-chunk weighted mean residual across spectra with
    statistical and intrinsic-scatter error bars.
-3. ``sample_per_object_chunk_bias.png`` — per-chunk points = each object's weighted mean bias;
-   overlay = sample-wide weighted mean across objects (stat + intrinsic error bars).
+3. ``sample_per_object_chunk_bias.png`` — two panels: per-chunk object biases with
+   sample mean; residuals relative to that order mean. Objects labeled by Gaia DR3 id only.
+4. ``residual_to_order_mean.csv`` / ``residual_to_order_mean_summary.csv`` — per-object
+   deltas vs order mean, with IVW mean and +/- order counts.
 
 Example::
 
@@ -67,13 +69,36 @@ def _ordered_chunks(chunk_keys: list[str]) -> list[str]:
     return sorted(set(chunk_keys), key=_chunk_sort_key)
 
 
-def _exposure_rv_weighted(rv: np.ndarray, err: np.ndarray) -> float:
-    ok = np.isfinite(rv) & np.isfinite(err) & (err > 0) & (err < 1e20)
+def _finite_positive_err_mask(rv: np.ndarray, err: np.ndarray) -> np.ndarray:
+    """True where RV and uncertainty are usable for inverse-variance weighting."""
+    rv = np.asarray(rv, float)
+    err = np.asarray(err, float)
+    return np.isfinite(rv) & np.isfinite(err) & (err > 0) & (err < 1e20)
+
+
+def _exposure_rv_equal_weight(rv: np.ndarray, err: np.ndarray) -> float:
+    """
+    Equal-weight mean of chunks with usable errors.
+
+    Used to demean order/chunk RVs before bias residuals. Inverse-variance
+    demeaning is wrong here: when the order bias curve is structured, IVW
+    absorbs a weight-dependent projection of that curve into the zero point,
+    so blue-heavy vs red-heavy spectra get opposite residual offsets relative
+    to the sample order mean.
+    """
+    ok = _finite_positive_err_mask(rv, err)
     if not np.any(ok):
-        v = rv[np.isfinite(rv)]
-        return float(np.mean(v)) if len(v) else float("nan")
-    v = rv[ok].astype(float)
-    e = err[ok].astype(float)
+        return float("nan")
+    return float(np.mean(np.asarray(rv, float)[ok]))
+
+
+def _exposure_rv_weighted(rv: np.ndarray, err: np.ndarray) -> float:
+    """Inverse-variance exposure RV; NaN if no points have a usable error."""
+    ok = _finite_positive_err_mask(rv, err)
+    if not np.any(ok):
+        return float("nan")
+    v = np.asarray(rv, float)[ok]
+    e = np.asarray(err, float)[ok]
     w = 1.0 / (e**2)
     return float(np.sum(w * v) / np.sum(w))
 
@@ -89,7 +114,7 @@ def iterative_spectrum_chunk_clip_mask(
     """
     Per-spectrum iterative clip until convergence:
 
-    1. |RV_i − weighted_mean(kept)| > max_delta_kms
+    1. |RV_i − equal_weight_mean(kept)| > max_delta_kms
     2. |RV_i − mean(RV_{j≠i})| > nsigma × RMS(RV_{j≠i})  (leave-one-out)
     """
     rv = np.asarray(rv, float)
@@ -109,10 +134,10 @@ def iterative_spectrum_chunk_clip_mask(
             break
 
         if use_delta and len(active) >= 1:
-            wmean = _exposure_rv_weighted(rv[keep], err[keep])
-            if np.isfinite(wmean):
+            center = _exposure_rv_equal_weight(rv[keep], err[keep])
+            if np.isfinite(center):
                 for i in active:
-                    if abs(float(rv[i]) - wmean) > float(max_delta_kms):
+                    if abs(float(rv[i]) - center) > float(max_delta_kms):
                         keep[i] = False
                         removed_any = True
 
@@ -153,13 +178,24 @@ def apply_spectrum_chunk_outlier_clip(
         idx = g.index.to_numpy()
         rv = g["rv_kms"].astype(float).to_numpy()
         err = g["rv_err_kms"].astype(float).to_numpy()
-        keep = iterative_spectrum_chunk_clip_mask(
-            rv, err, nsigma=nsigma, max_delta_kms=max_delta_kms
-        )
+        # Missing / non-positive errors never enter IVW averages or clip means.
+        usable = _finite_positive_err_mask(rv, err)
+        keep = np.zeros(len(rv), dtype=bool)
+        if np.any(usable):
+            keep_u = iterative_spectrum_chunk_clip_mask(
+                rv[usable],
+                err[usable],
+                nsigma=nsigma,
+                max_delta_kms=max_delta_kms,
+            )
+            keep[np.where(usable)[0]] = keep_u
         out.loc[idx, "chunk_kept"] = keep
         if not np.any(keep):
             continue
-        exp_rv = _exposure_rv_weighted(rv[keep], err[keep])
+        exp_rv = _exposure_rv_equal_weight(rv[keep], err[keep])
+        if not np.isfinite(exp_rv):
+            out.loc[idx, "chunk_kept"] = False
+            continue
         out.loc[idx[keep], "exposure_rv_kms"] = exp_rv
         out.loc[idx[keep], "residual_kms"] = rv[keep] - exp_rv
 
@@ -170,15 +206,17 @@ def _weighted_mean_and_errors(
     values: np.ndarray,
     errs: np.ndarray,
 ) -> tuple[float, float, float]:
-    """Return (weighted_mean, statistical_err, intrinsic_scatter)."""
-    ok = np.isfinite(values) & np.isfinite(errs) & (errs > 0) & (errs < 1e20)
+    """
+    Return (weighted_mean, statistical_err, intrinsic_scatter).
+
+    Only points with finite positive ``errs`` enter the IVW. If none qualify,
+    all three returns are NaN (no unweighted fallback).
+    """
+    ok = _finite_positive_err_mask(values, errs)
     if not np.any(ok):
-        v = values[np.isfinite(values)]
-        if len(v) == 0:
-            return float("nan"), float("nan"), float("nan")
-        return float(np.mean(v)), float("nan"), float(np.std(v, ddof=1)) if len(v) > 1 else 0.0
-    v = values[ok].astype(float)
-    e = errs[ok].astype(float)
+        return float("nan"), float("nan"), float("nan")
+    v = np.asarray(values, float)[ok]
+    e = np.asarray(errs, float)[ok]
     w = 1.0 / (e**2)
     mu = float(np.sum(w * v) / np.sum(w))
     stat = float(1.0 / np.sqrt(np.sum(w)))
@@ -374,19 +412,22 @@ def _summarize_chunks_per_object(
 ) -> pd.DataFrame:
     rows = []
     for ck, g in obj_df.groupby("chunk_key"):
-        n_meas = int(len(g))
+        resid = g["residual_kms"].astype(float).values
+        errs = g["rv_err_kms"].astype(float).values
+        usable = _finite_positive_err_mask(resid, errs)
+        n_meas = int(np.count_nonzero(usable))
         if n_meas < min_measurements:
             continue
-        mu, stat, intrinsic = _weighted_mean_and_errors(
-            g["residual_kms"].astype(float).values,
-            g["rv_err_kms"].astype(float).values,
-        )
+        mu, stat, intrinsic = _weighted_mean_and_errors(resid, errs)
+        if not np.isfinite(mu) or not np.isfinite(stat):
+            continue
+        g_u = g.iloc[np.flatnonzero(usable)]
         rows.append(
             {
                 "chunk_key": str(ck),
                 "chunk_order": _chunk_sort_key(str(ck))[0],
                 "n_measurements": n_meas,
-                "n_spectra": int(g["file"].nunique()),
+                "n_spectra": int(g_u["file"].nunique()),
                 "weighted_mean_residual_kms": mu,
                 "statistical_err_kms": stat,
                 "intrinsic_scatter_kms": intrinsic,
@@ -485,13 +526,127 @@ def apply_sample_object_bias_clip(
     return out
 
 
+def _gaia_dr3_label(gaia_id: str) -> str:
+    """Canonical plot/CSV label: Gaia DR3 source id only (no literature names)."""
+    gid = str(gaia_id).strip()
+    if gid.startswith("Gaia_DR3_"):
+        return gid
+    return f"Gaia_DR3_{gid}"
+
+
+def _sample_mean_bias_by_chunk(kept: pd.DataFrame) -> dict[str, float]:
+    """IVW cross-object mean bias per chunk_key (sample mean curve)."""
+    out: dict[str, float] = {}
+    if kept.empty:
+        return out
+    for ck, g in kept.groupby("chunk_key"):
+        mu, _, _ = _weighted_mean_and_errors(
+            g["weighted_mean_residual_kms"].astype(float).values,
+            _combined_object_bias_err(
+                g["statistical_err_kms"].astype(float).values,
+                g["intrinsic_scatter_kms"].astype(float).values,
+            ),
+        )
+        if np.isfinite(mu):
+            out[str(ck)] = float(mu)
+    return out
+
+
+def build_order_relative_residuals(bias_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Per-object chunk bias minus the sample IVW mean at that chunk_key.
+
+    Uses ``sample_kept`` rows when present. Adds ``sample_mean_bias_kms`` and
+    ``residual_to_order_mean_kms``.
+    """
+    if bias_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "gaia_dr3_id",
+                "chunk_key",
+                "chunk_order",
+                "weighted_mean_residual_kms",
+                "statistical_err_kms",
+                "intrinsic_scatter_kms",
+                "sample_kept",
+                "sample_mean_bias_kms",
+                "residual_to_order_mean_kms",
+            ]
+        )
+    df = bias_df.copy()
+    if "sample_kept" not in df.columns:
+        df["sample_kept"] = True
+    kept = df[df["sample_kept"].astype(bool)]
+    means = _sample_mean_bias_by_chunk(kept)
+    df["sample_mean_bias_kms"] = df["chunk_key"].astype(str).map(means)
+    df["residual_to_order_mean_kms"] = (
+        df["weighted_mean_residual_kms"].astype(float) - df["sample_mean_bias_kms"].astype(float)
+    )
+    return df
+
+
+def summarize_order_relative_residuals(rel_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Per object: IVW of residuals-to-order-mean, and counts of positive/negative orders.
+
+    Only ``sample_kept`` rows with finite relative residuals and usable errors.
+    """
+    if rel_df.empty:
+        return pd.DataFrame(
+            columns=[
+                "gaia_dr3_id",
+                "n_orders",
+                "n_positive",
+                "n_negative",
+                "n_zero",
+                "ivw_residual_to_order_mean_kms",
+                "statistical_err_kms",
+                "intrinsic_scatter_kms",
+                "unweighted_mean_residual_to_order_mean_kms",
+            ]
+        )
+    df = rel_df.copy()
+    if "sample_kept" in df.columns:
+        df = df[df["sample_kept"].astype(bool)]
+    rows = []
+    for gid, g in df.groupby("gaia_dr3_id"):
+        delta = g["residual_to_order_mean_kms"].astype(float).values
+        err = _combined_object_bias_err(
+            g["statistical_err_kms"].astype(float).values,
+            g["intrinsic_scatter_kms"].astype(float).values,
+        )
+        ok = _finite_positive_err_mask(delta, err) & np.isfinite(delta)
+        if not np.any(ok):
+            continue
+        d = delta[ok]
+        e = err[ok]
+        mu, stat, intrinsic = _weighted_mean_and_errors(d, e)
+        rows.append(
+            {
+                "gaia_dr3_id": str(gid),
+                "n_orders": int(len(d)),
+                "n_positive": int(np.count_nonzero(d > 0)),
+                "n_negative": int(np.count_nonzero(d < 0)),
+                "n_zero": int(np.count_nonzero(d == 0)),
+                "ivw_residual_to_order_mean_kms": mu,
+                "statistical_err_kms": stat,
+                "intrinsic_scatter_kms": intrinsic,
+                "unweighted_mean_residual_to_order_mean_kms": float(np.mean(d)),
+            }
+        )
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.sort_values("ivw_residual_to_order_mean_kms").reset_index(drop=True)
+
+
 def _plot_sample_per_object_bias(
     bias_df: pd.DataFrame,
-    names: dict[str, str],
     out_path: Path,
     *,
     sample_sigma: float | None,
     sample_max_delta_kms: float | None,
+    rel_df: pd.DataFrame | None = None,
 ) -> None:
     if bias_df.empty:
         return
@@ -502,9 +657,38 @@ def _plot_sample_per_object_bias(
     cmap = plt.cm.tab20(np.linspace(0, 1, max(len(gids), 1)))
     gid_to_j = {gid: j for j, gid in enumerate(gids)}
 
-    fig, ax = plt.subplots(figsize=(max(10, len(chunks) * 0.25), 6))
+    if rel_df is None:
+        rel_df = build_order_relative_residuals(bias_df)
+
+    fig, (ax0, ax1) = plt.subplots(
+        2,
+        1,
+        figsize=(max(10, len(chunks) * 0.28), 10),
+        sharex=True,
+        gridspec_kw={"height_ratios": [1.0, 1.0]},
+    )
     kept = bias_df[bias_df["sample_kept"].astype(bool)] if "sample_kept" in bias_df.columns else bias_df
-    excluded = bias_df[~bias_df["sample_kept"].astype(bool)] if "sample_kept" in bias_df.columns else bias_df.iloc[0:0]
+    excluded = (
+        bias_df[~bias_df["sample_kept"].astype(bool)]
+        if "sample_kept" in bias_df.columns
+        else bias_df.iloc[0:0]
+    )
+    rel_kept = (
+        rel_df[rel_df["sample_kept"].astype(bool)]
+        if "sample_kept" in rel_df.columns
+        else rel_df
+    )
+
+    # Legend proxies for every object (full Gaia id), independent of which chunk appears first.
+    for gid in gids:
+        j = gid_to_j[gid]
+        ax0.scatter(
+            [],
+            [],
+            s=28,
+            c=[cmap[j % len(cmap)]],
+            label=_gaia_dr3_label(gid),
+        )
 
     for _, r in kept.iterrows():
         gid = str(r["gaia_dr3_id"])
@@ -513,14 +697,12 @@ def _plot_sample_per_object_bias(
             continue
         j = gid_to_j.get(gid, 0)
         x = chunk_to_x[ck] + (j - len(gids) / 2) * 0.02
-        label = names.get(gid, gid[:12])
-        ax.scatter(
+        ax0.scatter(
             x,
             float(r["weighted_mean_residual_kms"]),
             s=28,
             alpha=0.8,
             c=[cmap[j % len(cmap)]],
-            label=label if chunk_to_x[ck] == 0 else None,
         )
 
     if len(excluded):
@@ -531,7 +713,7 @@ def _plot_sample_per_object_bias(
             gid = str(r["gaia_dr3_id"])
             j = gid_to_j.get(gid, 0)
             x = chunk_to_x[ck] + (j - len(gids) / 2) * 0.02
-            ax.scatter(
+            ax0.scatter(
                 x,
                 float(r["weighted_mean_residual_kms"]),
                 marker="x",
@@ -540,7 +722,7 @@ def _plot_sample_per_object_bias(
                 alpha=0.45,
                 linewidths=0.8,
             )
-        ax.scatter(
+        ax0.scatter(
             [],
             [],
             marker="x",
@@ -565,21 +747,49 @@ def _plot_sample_per_object_bias(
         ostat.append(stat if np.isfinite(stat) else 0.0)
         oint.append(intrinsic if np.isfinite(intrinsic) else 0.0)
     if ox:
-        ox = np.asarray(ox, float)
-        oy = np.asarray(oy, float)
-        ostat = np.asarray(ostat, float)
-        oint = np.asarray(oint, float)
-        ax.errorbar(ox, oy, yerr=ostat, fmt="D", color="black", ms=6, capsize=2, label="sample mean (stat)", zorder=5)
-        ax.errorbar(ox, oy, yerr=oint, fmt="none", ecolor="black", capsize=5, elinewidth=2, label="sample mean (intrinsic)", zorder=4)
+        ox_a = np.asarray(ox, float)
+        oy_a = np.asarray(oy, float)
+        ostat_a = np.asarray(ostat, float)
+        oint_a = np.asarray(oint, float)
+        ax0.errorbar(
+            ox_a, oy_a, yerr=ostat_a, fmt="D", color="black", ms=6, capsize=2,
+            label="sample mean (stat)", zorder=5,
+        )
+        ax0.errorbar(
+            ox_a, oy_a, yerr=oint_a, fmt="none", ecolor="black", capsize=5, elinewidth=2,
+            label="sample mean (intrinsic)", zorder=4,
+        )
 
-    ax.axhline(0.0, color="gray", ls=":", lw=0.8)
-    ax.set_xticks(range(len(chunks)))
-    ax.set_xticklabels(chunks, rotation=90, fontsize=6)
-    ax.set_xlabel("chunk_key")
-    ax.set_ylabel("per-object weighted mean chunk bias (km/s)")
+    ax0.axhline(0.0, color="gray", ls=":", lw=0.8)
+    ax0.set_ylabel("per-object weighted mean chunk bias (km/s)")
     clip_note = _clip_title_note(sample_sigma, sample_max_delta_kms)
-    ax.set_title(f"Sample: per-object chunk bias and cross-object mean{clip_note}")
-    ax.legend(fontsize=6, loc="upper right", ncol=2)
+    ax0.set_title(f"Sample: per-object chunk bias and cross-object mean{clip_note}")
+    ax0.legend(fontsize=5, loc="upper right", ncol=2, framealpha=0.9)
+
+    for _, r in rel_kept.iterrows():
+        gid = str(r["gaia_dr3_id"])
+        ck = str(r["chunk_key"])
+        if ck not in chunk_to_x:
+            continue
+        delta = float(r["residual_to_order_mean_kms"])
+        if not np.isfinite(delta):
+            continue
+        j = gid_to_j.get(gid, 0)
+        x = chunk_to_x[ck] + (j - len(gids) / 2) * 0.02
+        ax1.scatter(
+            x,
+            delta,
+            s=28,
+            alpha=0.8,
+            c=[cmap[j % len(cmap)]],
+        )
+    ax1.axhline(0.0, color="gray", ls=":", lw=0.8)
+    ax1.set_xticks(range(len(chunks)))
+    ax1.set_xticklabels(chunks, rotation=90, fontsize=6)
+    ax1.set_xlabel("chunk_key")
+    ax1.set_ylabel("residual − sample mean at order (km/s)")
+    ax1.set_title("Same objects relative to the order (sample) mean")
+
     fig.tight_layout()
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
@@ -622,15 +832,13 @@ def run_plot_chunk_residuals(
     else:
         tab_plot = tab
 
-    name_lookup = _load_name_lookup(_REPO_ROOT)
-    names: dict[str, str] = {}
     summaries: dict[str, pd.DataFrame] = {}
     n_objects = 0
 
     for gid, obj_all in tab.groupby("gaia_dr3_id"):
         gid = str(gid)
-        name = _object_name(gid, summary_dir, name_lookup)
-        names[gid] = name
+        # Literature / SIMBAD names must not enter residual products; Gaia id only.
+        name = _gaia_dr3_label(gid)
         obj_dir = out_dir / gid
         obj_dir.mkdir(parents=True, exist_ok=True)
         obj_all.to_csv(obj_dir / "chunk_residuals_long.csv", index=False)
@@ -640,7 +848,7 @@ def run_plot_chunk_residuals(
             obj_all,
             gaia_id=gid,
             name=name,
-            out_path=obj_dir / f"{name or gid}_residuals_by_spectrum.png",
+            out_path=obj_dir / f"{name}_residuals_by_spectrum.png",
             clip_sigma=chunk_outlier_sigma,
             clip_max_delta_kms=chunk_max_delta_kms,
         )
@@ -653,7 +861,7 @@ def run_plot_chunk_residuals(
             summary,
             gaia_id=gid,
             name=name,
-            out_path=obj_dir / f"{name or gid}_chunk_weighted_mean.png",
+            out_path=obj_dir / f"{name}_chunk_weighted_mean.png",
             title_suffix=(
                 f"per-chunk weighted mean (≥{min_chunk_measurements} surviving measurements)"
                 + _clip_title_note(chunk_outlier_sigma, chunk_max_delta_kms)
@@ -667,7 +875,7 @@ def run_plot_chunk_residuals(
             bias_rows.append(
                 {
                     "gaia_dr3_id": gid,
-                    "name": names.get(gid, gid),
+                    "name": _gaia_dr3_label(gid),
                     **r.to_dict(),
                 }
             )
@@ -688,12 +896,23 @@ def run_plot_chunk_residuals(
     if not bias_df.empty:
         bias_df.to_csv(out_dir / "per_object_chunk_bias.csv", index=False)
 
+    rel_df = build_order_relative_residuals(bias_df) if not bias_df.empty else pd.DataFrame()
+    rel_summary = summarize_order_relative_residuals(rel_df) if not rel_df.empty else pd.DataFrame()
+    if not rel_df.empty:
+        rel_df.to_csv(out_dir / "residual_to_order_mean.csv", index=False)
+    if not rel_summary.empty:
+        rel_summary.to_csv(out_dir / "residual_to_order_mean_summary.csv", index=False)
+        logger.info(
+            "Order-relative residual summary (IVW of residual−order mean):\n%s",
+            rel_summary.to_string(index=False),
+        )
+
     _plot_sample_per_object_bias(
         bias_df,
-        names,
         out_dir / "sample_per_object_chunk_bias.png",
         sample_sigma=sample_outlier_sigma,
         sample_max_delta_kms=sample_max_delta_kms,
+        rel_df=rel_df if not rel_df.empty else None,
     )
 
     return {

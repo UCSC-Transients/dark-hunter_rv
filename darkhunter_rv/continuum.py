@@ -1,4 +1,10 @@
 # continuum.py
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+
 import numpy as np
 from scipy.interpolate import UnivariateSpline, LSQUnivariateSpline
 from scipy.signal import savgol_filter, medfilt
@@ -7,6 +13,124 @@ from scipy.ndimage import maximum_filter, percentile_filter, uniform_filter1d
 from . import config
 
 STRONG_LINES = [6562.8, 4861.3, 4340.5, 4101.7, 3970.1, 3889.0]
+logger = logging.getLogger(__name__)
+
+
+def _parse_span_pairs(raw) -> list[tuple[float, float]]:
+    """Parse ``[[lo, hi], ...]`` wavelength spans from SED regions JSON."""
+    spans: list[tuple[float, float]] = []
+    for pair in raw or []:
+        if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+            continue
+        try:
+            lo, hi = float(pair[0]), float(pair[1])
+        except (TypeError, ValueError):
+            continue
+        if np.isfinite(lo) and np.isfinite(hi) and hi > lo:
+            spans.append((lo, hi))
+    return spans
+
+
+def load_sed_region_spans(
+    regions_json: str | Path | None,
+) -> tuple[list[tuple[float, float]], list[tuple[float, float]]]:
+    """
+    Load continuum and line wavelength spans from an SED blaze regions JSON.
+
+    Expects picker format:
+    ``{\"orders\": {\"N\": {\"continuum_regions\": [...], \"line_regions\": [...]}}}``.
+
+    Returns
+    -------
+    continuum_spans, line_spans
+        Flat ``(lo, hi)`` lists in Å (union across orders).
+    """
+    if regions_json is None:
+        return [], []
+    path = Path(regions_json)
+    if not path.is_file():
+        logger.warning("SED regions JSON not found: %s", path)
+        return [], []
+    try:
+        doc = json.loads(path.read_text())
+    except Exception as exc:
+        logger.warning("Failed to read SED regions JSON %s: %s", path, exc)
+        return [], []
+    orders = doc.get("orders") if isinstance(doc, dict) else None
+    if not isinstance(orders, dict):
+        logger.warning("SED regions JSON missing orders map: %s", path)
+        return [], []
+    cont: list[tuple[float, float]] = []
+    lines: list[tuple[float, float]] = []
+    for _ok, orec in orders.items():
+        if not isinstance(orec, dict):
+            continue
+        cont.extend(_parse_span_pairs(orec.get("continuum_regions")))
+        lines.extend(_parse_span_pairs(orec.get("line_regions")))
+    logger.info(
+        "Loaded %d SED continuum + %d line spans from %s",
+        len(cont),
+        len(lines),
+        path.name,
+    )
+    return cont, lines
+
+
+def load_sed_continuum_spans(
+    regions_json: str | Path | None,
+) -> list[tuple[float, float]]:
+    """Load continuum wavelength spans only (see ``load_sed_region_spans``)."""
+    cont, _lines = load_sed_region_spans(regions_json)
+    return cont
+
+
+def continuum_pixels_from_spans(
+    wavelength: np.ndarray,
+    continuum_spans: list[tuple[float, float]] | None,
+) -> np.ndarray:
+    """Boolean mask: True where ``wavelength`` falls in any continuum span."""
+    w = np.asarray(wavelength, float)
+    m = np.zeros(w.shape, dtype=bool)
+    if not continuum_spans:
+        return m
+    for lo, hi in continuum_spans:
+        m |= (w >= float(lo)) & (w <= float(hi))
+    return m
+
+
+def order_edge_exclusion_mask(n_pixels: int, edge_pixels: int = 5) -> np.ndarray:
+    """True for pixels away from order edges (first/last ``edge_pixels``)."""
+    n = int(n_pixels)
+    m = np.ones(n, dtype=bool)
+    ep = max(0, int(edge_pixels))
+    if ep > 0 and n > 0:
+        m[: min(ep, n)] = False
+        m[max(0, n - ep) :] = False
+    return m
+
+
+def build_fixed_cont_mask(
+    wavelength: np.ndarray,
+    flux: np.ndarray,
+    *,
+    continuum_spans: list[tuple[float, float]] | None = None,
+    line_spans: list[tuple[float, float]] | None = None,
+    edge_pixels: int = 5,
+) -> np.ndarray:
+    """
+    Build ``fixed_cont_mask`` matching SED ``build_manual_base_mask`` continuum pixels.
+
+    ``fixed_cont = continuum_spans ∩ CR-ok ∩ edge-ok ∩ valid ∩ ¬line_spans``.
+    Used to pick pixels for the single continuum median scale.
+    """
+    w = np.asarray(wavelength, float)
+    f = np.asarray(flux, float)
+    valid = np.isfinite(w) & np.isfinite(f) & (f > 0)
+    cr_ok = outlier_mask(w, f)
+    edge_ok = order_edge_exclusion_mask(w.size, edge_pixels=edge_pixels)
+    in_cont = continuum_pixels_from_spans(w, continuum_spans)
+    in_line = continuum_pixels_from_spans(w, line_spans)
+    return in_cont & cr_ok & edge_ok & valid & ~in_line
 
 
 def outlier_mask(wavelength, flux, hi_sigma=5, lo_sigma=20, max_iter=3):
@@ -16,6 +140,9 @@ def outlier_mask(wavelength, flux, hi_sigma=5, lo_sigma=20, max_iter=3):
     sg = savgol_filter(flux, window_length=7, polyorder=2, mode="interp")
     residuals = flux - sg
     mad = 1.4826 * np.median(np.abs(residuals - np.median(residuals)))
+    # Flat / noiseless arrays: mad≈0 would mark every tiny residual as an outlier.
+    if not np.isfinite(mad) or mad <= 0.0:
+        return mask
 
     for _ in range(max_iter):
         hi = residuals > hi_sigma * mad
@@ -219,6 +346,41 @@ def _fit_continuum_blaze(wavelength, flux, eflux, poly_order=4):
     return wavelength[final_mask], norm_flux[final_mask], norm_eflux[final_mask]
 
 
+def _fit_continuum_none(
+    wavelength,
+    flux,
+    eflux,
+    continuum_spans: list[tuple[float, float]] | None = None,
+    line_spans: list[tuple[float, float]] | None = None,
+):
+    """
+    Already-deblazed spectra: single continuum scale from SED ``fixed_cont_mask``.
+
+    Build ``fixed_cont_mask`` from continuum/line spans (CR + edge cuts), then
+    ``scale = median(flux[fixed_cont_mask])``. Fallback: median of positive finite flux.
+    """
+    wavelength = np.asarray(wavelength, float)
+    flux = np.asarray(flux, float)
+    eflux = np.asarray(eflux, float)
+    finite = np.isfinite(flux) & np.isfinite(wavelength)
+    scale = np.nan
+    if continuum_spans:
+        fixed_cont = build_fixed_cont_mask(
+            wavelength,
+            flux,
+            continuum_spans=continuum_spans,
+            line_spans=line_spans,
+        )
+        if int(np.sum(fixed_cont)) >= 5:
+            scale = float(np.nanmedian(flux[fixed_cont]))
+    if not np.isfinite(scale) or scale <= 0.0:
+        pos = finite & (flux > 0)
+        scale = float(np.nanmedian(flux[pos])) if np.any(pos) else 1.0
+    if not np.isfinite(scale) or scale <= 0.0:
+        scale = 1.0
+    return wavelength, flux / scale, eflux / scale
+
+
 def _fit_continuum_sinc_blaze(
     wavelength,
     flux,
@@ -285,15 +447,27 @@ def fit_continuum(
     cr_mask=None,
     fit_model="sinc2",
     poly_order=2,
+    continuum_spans: list[tuple[float, float]] | None = None,
+    line_spans: list[tuple[float, float]] | None = None,
 ):
     """
     Normalize for line work.
 
     continuum_mode:
+      - ``none``: already-deblazed; single scale from SED ``fixed_cont_mask`` median (else
+        positive-flux median). No continuum shape fit.
       - ``spline`` / ``blaze``: legacy per-spectrum continuum (no shared calibration).
       - ``sinc_blaze``: shared per-order sinc² blaze, then spline on blaze-corrected flux.
       - ``sinc_blaze_only``: shared blaze + median normalization only.
     """
+    if continuum_mode == "none":
+        return _fit_continuum_none(
+            wavelength,
+            flux,
+            eflux,
+            continuum_spans=continuum_spans,
+            line_spans=line_spans,
+        )
     if continuum_mode in ("sinc_blaze", "sinc_blaze_only"):
         if blaze_model is None:
             raise ValueError(

@@ -49,6 +49,18 @@ INSTRUMENTS = {
         mask_directory=str(config.MASK_DIRECTORY),
         header_keywords={"jd": "JD_UTC_FLUXWEIGHTED_FRD"},
     ),
+    "HIRES": InstrumentProfile(
+        name="HIRES",
+        file_format="fits",
+        num_orders=49,
+        bias_file=str(config.REPO_ROOT / "bias_statistics_hires.txt"),
+        # Edge / pathological orders: never measured or unusable scatter after bias train.
+        # Remaining high-scatter chunks (e.g. 25, 36) are down-weighted via bias b2 RMS.
+        bad_orders=[0, 1, 2, 5],
+        mask_directory=str(config.MASK_DIRECTORY),
+        header_keywords={"mjd": "MJD"},
+        resolving_power=45000.0,
+    ),
 }
 
 

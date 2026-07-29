@@ -309,6 +309,13 @@ def _continuum_fit_kw(
     kw: dict = {"continuum_mode": mode}
     if echelle_order is not None:
         kw["echelle_order"] = int(echelle_order)
+    if mode == "none":
+        spans = getattr(args, "sed_continuum_spans", None)
+        if spans:
+            kw["continuum_spans"] = spans
+        line_spans = getattr(args, "sed_line_spans", None)
+        if line_spans:
+            kw["line_spans"] = line_spans
     blaze_cal = getattr(args, "blaze_calibration", None)
     if mode in ("sinc_blaze", "sinc_blaze_only"):
         if blaze_cal is not None and echelle_order is not None:
@@ -583,6 +590,8 @@ def process_spectrum(
         header, spec_data = io_utils.read_spectrum_ghost(spectrum_file)
     elif instrument.name == "MAROON-X":
         header, spec_data = io_utils.read_spectrum_maroonx(spectrum_file)
+    elif instrument.name == "HIRES":
+        header, spec_data = io_utils.read_spectrum_hires(spectrum_file)
     else:
         header, spec_data = io_utils.read_spectrum(spectrum_file)
 
@@ -1155,6 +1164,9 @@ def process_spectrum(
                 None,
                 plot_root / f"{stem}_chunk{chunk_key}_norm.png",
                 title=f"{chunk_key} norm ({_resolve_continuum_mode(args, 'mask')})",
+                mask_wave=mw if mw is not None else None,
+                mask_strength=ms if ms is not None else None,
+                rv_mask_kms=float(rv_m) if np.isfinite(rv_m) else None,
             )
 
     if not plots_only:
@@ -1616,7 +1628,7 @@ def configure_blaze_continuum(args: argparse.Namespace, *, parser: argparse.Argu
 def main(argv: list[str] | None = None) -> None:
     argv = argv if argv is not None else sys.argv[1:]
     parser = argparse.ArgumentParser(description="Dark Hunter echelle RV pipeline")
-    parser.add_argument("input_file", nargs="+", help="Spectra (txt, GHOST blue FITS, MAROON-X h5)")
+    parser.add_argument("input_file", nargs="+", help="Spectra (txt, GHOST blue FITS, HIRES b FITS, MAROON-X h5)")
     parser.add_argument("--instrument", default="APF")
     parser.add_argument("--teff", type=float, default=config.DEFAULT_TEFF)
     parser.add_argument(
@@ -1712,12 +1724,13 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument(
         "--continuum-mode",
-        choices=["split", "spline", "blaze", "sinc_blaze", "sinc_blaze_only"],
+        choices=["split", "spline", "blaze", "sinc_blaze", "sinc_blaze_only", "none"],
         default="split",
         help=(
             "split (default): mask CCF uses sinc_blaze_only, template/strong use sinc_blaze when "
             "calibration/blaze_orders_apf.json is present; spline: legacy envelope only; "
-            "sinc_blaze / sinc_blaze_only: same mode for all lanes"
+            "sinc_blaze / sinc_blaze_only: same mode for all lanes; "
+            "none: SED continuum-region median scale (already-deblazed; mask continuum=1)"
         ),
     )
     parser.add_argument(
@@ -1730,6 +1743,15 @@ def main(argv: list[str] | None = None) -> None:
         type=Path,
         default=None,
         help="Per-order sinc² blaze JSON (default: config.BLAZE_CALIBRATION_FILE)",
+    )
+    parser.add_argument(
+        "--sed-regions-json",
+        type=Path,
+        default=None,
+        help=(
+            "SED blaze picker regions JSON (continuum_regions) for continuum_mode=none median scale. "
+            "Default: config.SED_REGIONS_JSON / DARKHUNTER_SED_REGIONS_JSON."
+        ),
     )
     parser.add_argument("--subchunks", type=int, default=1, help="Split each order into N pixel chunks")
     parser.add_argument(
@@ -1807,6 +1829,18 @@ def main(argv: list[str] | None = None) -> None:
 
     setup_logging(args.log_level, args.quiet)
     configure_blaze_continuum(args, parser=parser)
+
+    sed_path = getattr(args, "sed_regions_json", None) or config.SED_REGIONS_JSON
+    cont_spans, line_spans = continuum.load_sed_region_spans(sed_path)
+    args.sed_continuum_spans = cont_spans
+    args.sed_line_spans = line_spans
+    if str(getattr(args, "continuum_mode", "")) == "none":
+        logger.info(
+            "continuum_mode=none: %d continuum + %d line SED spans from %s (fixed_cont_mask)",
+            len(cont_spans),
+            len(line_spans),
+            sed_path,
+        )
 
     if args.write_qc_config:
         qc.ensure_qc_config(Path(args.qc_config))

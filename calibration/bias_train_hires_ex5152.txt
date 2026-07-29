@@ -1,0 +1,17 @@
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1551542027851147904_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1831515892016617856_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1832527648878112000_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1903279027392243968_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1947292821452944896_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1976272237115747072_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1976272237115747072_b_epoch_2.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_1978377080333206528_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_2005890606477702016_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_2005890606477702016_b_epoch_2.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_2076368064858958592_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_2200363873769396992_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_2426116249713980416_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_4186286004736185984_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_425758772325707264_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_4271998639836225920_b_epoch_1.fits
+/Users/rfoley/darkhunter/rvs/data/hires/Gaia_DR3_6905816175086865792_b_epoch_1.fits
