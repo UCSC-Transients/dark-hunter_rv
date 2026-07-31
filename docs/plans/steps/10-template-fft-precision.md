@@ -2,7 +2,7 @@
 step_id: 10-template-fft-precision
 phase: C
 status: in_progress
-github_issue: null
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/87
 branches:
   - step/10-template-fft-precision
 depends_on: [01-benchmark-cool-precision]
@@ -56,10 +56,18 @@ Improve **template_fft** per-epoch RV accuracy and precision on the same footing
 
 ### 10a — Baseline and overlap snapshot
 
-- [ ] Run `subchunks_8` production layout on bias-train + campaign list (or reuse campaign `template_fft` rows if layout matches).
-- [ ] `validation/rv_method_overlap_report` + `rv_method_diagnostics_report` on fixed diagnostics glob → `validation_output/template_fft_baseline/`.
-- [ ] Document mask−template MAD / median residual in applicability overlap (`method_regions`).
-- [ ] PDF triage for high-|mask−template| exposures (`plot_legacy_outlier_orders --overlap-csv`).
+- [x] Run `subchunks_8` production layout on bias-train + campaign list (or reuse campaign `template_fft` rows if layout matches).
+- [x] `validation/rv_method_overlap_report` + `rv_method_diagnostics_report` on fixed diagnostics glob → `validation_output/template_fft_baseline/`.
+- [x] Document mask−template MAD / median residual in applicability overlap (`method_regions`).
+- [x] PDF triage for high-|mask−template| exposures (`plot_legacy_outlier_orders --overlap-csv`).
+
+**Frozen reference (2026-07, keep `split`):**
+- Continuum: `--continuum-mode split`; layout `calibration/chunk_layouts/subchunks_8.yaml`
+- Cohort: `validation_output/chunk_campaign/spectrum_list.txt` (114 stems)
+- Artifacts: `validation_output/template_fft_baseline/pipeline_blaze_split/`, `overlap_blaze_split/`, `phase0_blaze_split/`
+- Overlap (mask+template valid, n=114): median(mask−template) ≈ −2.2 km/s, MAD ≈ **11.7 km/s**, mean |Δ| ≈ 15.7 km/s
+- Phase0 p75 (`phase0_blaze_split`): **10/29 (34.5%) `B_template_outlier`**; per-chunk median |tpl−mask| ≈ 26.6 km/s
+- Older larger overlap (`phase0_high_snr`): 32/121 class-B — continuum compare reference only; **A/B vs `phase0_blaze_split`**
 
 ### 10b — Template measurement knobs
 
@@ -131,11 +139,12 @@ PYTHONPATH=. python3 -m validation.plot_legacy_outlier_orders \
 - [ ] INDEX.md step 10 row
 - [ ] `docs/rv_methods_evaluation.md` — template validity and tuning section
 
-## Open decisions
+## Open decisions (locked for #87)
 
-- Template debias: separate `bias_statistics` per method vs shared chunk keys with method column?
-- Hot-star path: widen mask-seed window or disable seeding above Teff cut?
-- Primary science metric for template: σ_RV alone or mask−template residual stability?
+- Template debias: **`method_rv_offsets.txt` (mask truth)** after raw A/B; no separate template `bias_statistics` in first pass.
+- Hot-star seed: triage first; only widen/disable if diagnostics show truncation (class-B are cool Teff≲6150 — seed less likely).
+- Primary metric: **↓ class-B rate + ↓ mask−template MAD** (not σ_RV alone).
+- Triage hypothesis (phase0_blaze_split): class-B stems prefer **vsini≈70** templates (`VSINI_PROXY_REJECTED_GRID_KMS=75` path); D_agree often vsini≈12. First A/B: cooler rejected-vsini grid for cool stars.
 
 ## Relationship to other steps
 
