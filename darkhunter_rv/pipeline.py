@@ -683,7 +683,11 @@ def process_spectrum(
                     else:
                         vsini = vsini_raw
                 elif np.isfinite(rej_f):
-                    vrg = float(config.VSINI_PROXY_REJECTED_GRID_KMS)
+                    vrg = float(
+                        config.VSINI_PROXY_REJECTED_GRID_KMS
+                        if use_fft_primary
+                        else config.VSINI_PROXY_REJECTED_GRID_KMS_COOL
+                    )
                     vmax = float(config.VSINI_PROXY_MAX_KMS)
                     logger.warning(
                         "Rejected vsini_proxy estimate %.2f km/s (> %.1f max); using %.1f km/s for template grid",
@@ -693,14 +697,22 @@ def process_spectrum(
                     )
                     vsini = vrg
                 elif vb is not None:
-                    vnf = float(config.VSINI_PROXY_NONFINITE_GRID_KMS)
+                    vnf = float(
+                        config.VSINI_PROXY_NONFINITE_GRID_KMS
+                        if use_fft_primary
+                        else config.VSINI_PROXY_NONFINITE_GRID_KMS_COOL
+                    )
                     logger.warning(
                         "Non-finite vsini_proxy estimate; using %.1f km/s for template grid",
                         vnf,
                     )
                     vsini = vnf
                 else:
-                    vnf = float(config.VSINI_PROXY_NONFINITE_GRID_KMS)
+                    vnf = float(
+                        config.VSINI_PROXY_NONFINITE_GRID_KMS
+                        if use_fft_primary
+                        else config.VSINI_PROXY_NONFINITE_GRID_KMS_COOL
+                    )
                     logger.warning(
                         "No vsini_proxy from broadening CCF; using %.1f km/s for template grid",
                         vnf,
