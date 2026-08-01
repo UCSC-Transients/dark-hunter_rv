@@ -11,7 +11,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | Lane | Steps | Status |
 |------|-------|--------|
 | **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; **bias rebuild running** |
-| **template_fft** | 10 | **Merged** (#88) — 114-stem confirm + offsets TBD |
+| **template_fft** | 10 | **Merged** (#88); 114 confirm done — offsets / fusion next |
 | **strong_lines** | 06 | **API shipped in #88**; Teff validation sweep |
 | **fusion / adoption** | 03, 04 | After lanes above |
 
@@ -27,6 +27,6 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | 07 SB2 search | [steps/07-sb2-search.md](steps/07-sb2-search.md) | pending | [#44](https://github.com/astrofoley/dark-hunter_rv/issues/44) | `step/07a-sb2-detection`, `step/07b-sb2-reporting` | — |
 | 08 External RV cross-check | [steps/08-external-rv-crosscheck.md](steps/08-external-rv-crosscheck.md) | pending | [#45](https://github.com/astrofoley/dark-hunter_rv/issues/45) | `step/08-external-rv-crosscheck` | — |
 | 09 CCF RV estimator (mask) | [steps/09-ccf-rv-estimator.md](steps/09-ccf-rv-estimator.md) | complete (`gauss_offset`) | — | — | — |
-| 10 Template FFT precision | [steps/10-template-fft-precision.md](steps/10-template-fft-precision.md) | **in_progress** (code merged) | [#87](https://github.com/UCSC-Transients/dark-hunter_rv/issues/87) | `step/10-template-fft-precision` | 2026-08-01 ([#88](https://github.com/UCSC-Transients/dark-hunter_rv/pull/88)) |
+| 10 Template FFT precision | [steps/10-template-fft-precision.md](steps/10-template-fft-precision.md) | **in_progress** (code + 114 confirm; offsets TBD) | [#87](https://github.com/UCSC-Transients/dark-hunter_rv/issues/87) | `step/10-template-fft-precision` | 2026-08-01 ([#88](https://github.com/UCSC-Transients/dark-hunter_rv/pull/88)) |
 
 Update this file when an issue closes or a step status changes. Keep in sync with `.cursor/plans/rv-pipeline/INDEX.md`.
