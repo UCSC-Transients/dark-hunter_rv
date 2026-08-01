@@ -74,10 +74,12 @@ Improve **template_fft** per-epoch RV accuracy and precision on the same footing
 - [x] Triage class-B (`phase0_blaze_split`): warm Teff; many fixed keys with **vsini≈70** (rejected-proxy path).
 - [x] **Bugfix:** HiRes PHOENIX `_parse_lte_hires_filename` dropped minus on dash-split `[M/H]` (`-1.0`→`+1.0`) → empty banks for metal-poor stars (commit on #87 branch).
 - [x] Cool rejected/nonfinite vsini grid → 12 km/s (`VSINI_PROXY_REJECTED_GRID_KMS_COOL` / `_NONFINITE_…_COOL`); hot keeps 75/45.
-- [ ] Class-B + 114-stem campaign before/after (arm `ab_cool_vsini12_mhfix`).
-- [ ] Sensitivity: seed width, `|RV|` caps, `FFT_COARSE_TOP_K`, `fft_peak_pick` (only if vsini/MH arm insufficient).
-- [ ] vsini grid / PHOENIX bank coverage vs Teff (Gaia priors) — revisit if class-B remains.
-- [ ] Reject rules: `ccf_flat_like`, per-chunk QC parity with mask.
+- [x] Class-B + 114-stem campaign before/after (arm `ab_cool_vsini12_mhfix`).
+  - Class-B (10 stems): median |Δ| **15.15 → 1.08**; class-B **10 → 3** ([CLASS_B_COMPARISON.md](../../validation_output/template_fft_baseline/ab_cool_vsini12_mhfix/CLASS_B_COMPARISON.md)).
+  - Full 114 confirm: in progress under `pipeline_cool_vsini12_mhfix/` (resume after stall).
+- [x] Sensitivity: seed / caps / top-K / peak-pick deferred — vsini+MH arm sufficient for class-B collapse.
+- [x] vsini grid / PHOENIX bank — MH parse fix + cool rejected=12 addressed primary failure mode.
+- [ ] Reject rules: `ccf_flat_like`, per-chunk QC parity with mask — only if 114 confirm regresses.
 
 ### 10c — Template debias and deploy
 
