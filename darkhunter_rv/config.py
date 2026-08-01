@@ -70,10 +70,14 @@ VSINI_PROXY_MAX_KMS = 200.0
 # Used when ``estimate_broadening`` is non-finite (quick-normalize vs template mismatch, etc.).
 VSINI_PROXY_FALLBACK_KMS = 10.0
 # When the raw broadening estimate exceeds VSINI_PROXY_MAX_KMS we do not clamp to max (that would
-# still build a huge rotational grid). Use a **moderately wide** proxy so fast rotators stay in play.
+# still build a huge rotational grid). Hot stars use a **moderately wide** proxy so fast rotators
+# stay in play; cool stars use a much narrower rejected grid (phase0 class-B triage: vsini≈70 banks
+# from the old shared 75 km/s rejected proxy correlated with large mask−template residuals).
 VSINI_PROXY_REJECTED_GRID_KMS = 75.0
+VSINI_PROXY_REJECTED_GRID_KMS_COOL = 12.0
 # Non-finite broadening: wider than FALLBACK so unknown-width stars are not forced to a 10 km/s bank.
 VSINI_PROXY_NONFINITE_GRID_KMS = 45.0
+VSINI_PROXY_NONFINITE_GRID_KMS_COOL = 12.0
 # Upper end of the linspace used in ``templates._broadening_velocity_grid(..., wide=True)``.
 VSINI_WIDE_GRID_CAP_KMS = 160.0
 
@@ -232,8 +236,9 @@ RV_METHOD_SELECTION_NOTES = (
     "per chunk RV = CCF peak in FFT_EXPOSURE_VOTE_RV_SEED_KMS ± half-width (before mask CCF). "
     "Default: one PHOENIX (Teff, log g, [M/H], vsini) key per exposure for all template_fft chunks "
     "(--no-fixed-exposure-template restores per-chunk template choice). "
-    "vsini_proxy: above-max broadening → VSINI_PROXY_REJECTED_GRID_KMS; missing/invalid → "
-    "VSINI_PROXY_NONFINITE_GRID_KMS; wide bank vsini linspace capped by VSINI_WIDE_GRID_CAP_KMS. "
+    "vsini_proxy: above-max broadening → VSINI_PROXY_REJECTED_GRID_KMS (hot) or "
+    "VSINI_PROXY_REJECTED_GRID_KMS_COOL; missing/invalid → VSINI_PROXY_NONFINITE_GRID_KMS (hot) or "
+    "_COOL; wide bank vsini linspace capped by VSINI_WIDE_GRID_CAP_KMS. "
     "Spline continuum: noisy orders (high MAD/median) use wider envelope window, higher percentiles, "
     "higher floor tie (CONTINUUM_NOISY_*). "
     "Mask CCF peak fit: offset + Gaussian (no linear velocity term). "

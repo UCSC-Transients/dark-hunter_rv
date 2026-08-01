@@ -126,6 +126,8 @@ bash scripts/rebuild_mask_bias.sh
 
 Default pipeline uses `--continuum-mode split` with `calibration/blaze_orders_apf.json` (mask: `sinc_blaze_only`, template/strong: `sinc_blaze`). Legacy spline-only: `--no-blaze-continuum` or `--continuum-mode spline`. See `calibration/mask_lane_deploy.md`. Legacy per-echelle-order debias rows (integer key `9`) still work as a fallback when a chunk_key is missing.
 
+**Template FFT vsini proxy (step 10 / #87):** when broadening is rejected (> `VSINI_PROXY_MAX_KMS`) or non-finite, cool stars (Teff ≤ 6500) use `VSINI_PROXY_REJECTED_GRID_KMS_COOL` / `VSINI_PROXY_NONFINITE_GRID_KMS_COOL` (12 km/s); hot stars keep 75 / 45. HiRes PHOENIX filenames with dash-separated negative `[M/H]` (e.g. `lte07200-3.50-1.0`) restore the minus sign in `_parse_lte_hires_filename`.
+
 ## Daily / cron processing
 
 ```bash

@@ -1062,6 +1062,40 @@ def _trust_rv_err(rv: float, err: float, half_width_kms: float) -> float:
 
 
 HB_REST_A = 4861.3
+HA_REST_A = 6562.8
+HG_REST_A = 4340.5
+HD_REST_A = 4101.7
+
+# Product strong-line candidates (name, rest Å). Order within a Teff band is preference.
+STRONG_LINE_CANDIDATES: list[tuple[str, float]] = [
+    ("Hbeta", HB_REST_A),
+    ("Halpha", HA_REST_A),
+    ("Hgamma", HG_REST_A),
+    ("Hdelta", HD_REST_A),
+]
+
+
+def strong_line_rests_for_teff(teff: float) -> list[tuple[str, float]]:
+    """
+    Preferred strong-line rest wavelengths for an exposure Teff (single best later in pipeline).
+
+    Warm/hot (Teff ≥ 5500): Hβ first (best APF coverage + validated), then Hγ, Hα, Hδ.
+    Cooler: still try Hβ then Hα (Hα stronger in cool stars when covered).
+    """
+    t = float(teff) if teff == teff else float(config.DEFAULT_TEFF)
+    if t >= float(config.METHOD_REGION_STRONG_LINES_MIN_TEFF_K):
+        return [
+            ("Hbeta", HB_REST_A),
+            ("Hgamma", HG_REST_A),
+            ("Halpha", HA_REST_A),
+            ("Hdelta", HD_REST_A),
+        ]
+    return [
+        ("Halpha", HA_REST_A),
+        ("Hbeta", HB_REST_A),
+        ("Hgamma", HG_REST_A),
+        ("Hdelta", HD_REST_A),
+    ]
 
 
 def h_beta_joint_line_model(
@@ -1094,31 +1128,32 @@ def h_beta_joint_line_model(
     return c0 + c1 * (x - rest) - vterm - lterm
 
 
-def measure_h_beta_rv(
+def measure_strong_line_voigt_lorentz(
     wave: np.ndarray,
     flux_norm: np.ndarray,
     *,
+    rest: float = HB_REST_A,
     broad_lines: bool = False,
     tpl_wave: np.ndarray | None = None,
     tpl_flux_norm: np.ndarray | None = None,
     resolving_power: float | None = None,
 ) -> dict | None:
     """
-    Third RV method (diagnostics ``strong_lines``): Hβ-only for now; extend to more rest wavelengths later.
+    Strong-line RV via joint Voigt+Lorentz at a chosen rest wavelength (Å).
 
-    Local linear continuum from far wings, smoothed core minimum, capped-|v| **joint**
-    Voigt+Lorentz model (single shared line center; both profiles subtracted from the same linear
-    continuum — pressure/wing Lorentzian plus thermally dominated Voigt core), and optional template
-    cross-correlation in the same wavelength slice.
+    Default ``rest`` is Hβ (:data:`HB_REST_A`). Local linear continuum from far wings, smoothed
+    core minimum, capped-|v| joint Voigt+Lorentz (shared center), and optional template
+    cross-correlation in the same wavelength slice. Used for diagnostics method ``strong_lines``.
     """
+    rest = float(rest)
     w_full = np.asarray(wave, float)
     f_full = np.asarray(flux_norm, float)
     wmn, wmx = float(np.nanmin(w_full)), float(np.nanmax(w_full))
-    if not (wmn <= HB_REST_A <= wmx):
+    if not (wmn <= rest <= wmx):
         return None
 
     half_ang = 135.0 if broad_lines else 72.0
-    mwin = (w_full >= HB_REST_A - half_ang) & (w_full <= HB_REST_A + half_ang) & np.isfinite(f_full)
+    mwin = (w_full >= rest - half_ang) & (w_full <= rest + half_ang) & np.isfinite(f_full)
     if int(np.sum(mwin)) < 22:
         return None
     w0 = w_full[mwin]
@@ -1127,8 +1162,8 @@ def measure_h_beta_rv(
     w0, f0 = w0[o_s], f0[o_s]
 
     ex_kms = 780.0 if broad_lines else 400.0
-    f_flat = _local_continuum_divide_for_line(w0, f0, HB_REST_A, ex_kms)
-    v0 = config.C_KMS * (w0 / HB_REST_A - 1.0)
+    f_flat = _local_continuum_divide_for_line(w0, f0, rest, ex_kms)
+    v0 = config.C_KMS * (w0 / rest - 1.0)
 
     trust_core = 185.0 if broad_lines else 125.0
     sig_sm = max(3.5, float(len(f_flat)) * (0.045 if broad_lines else 0.032))
@@ -1155,11 +1190,11 @@ def measure_h_beta_rv(
         if w_hi > w_lo + 1e-3:
             lo_mu, hi_mu = w_lo + 1e-4, w_hi - 1e-4
             max_sig_kms = 480.0 if broad_lines else 140.0
-            sig_hi = max(HB_REST_A * max_sig_kms / config.C_KMS, 0.16)
-            sig_lo = max(HB_REST_A * 10.0 / config.C_KMS, 0.065)
+            sig_hi = max(rest * max_sig_kms / config.C_KMS, 0.16)
+            sig_lo = max(rest * 10.0 / config.C_KMS, 0.065)
             span = max(w_hi - w_lo, 1e-6)
             c1max = 16.0 / span
-            mh = np.abs(config.C_KMS * (w_f / HB_REST_A - 1.0)) <= (620.0 if broad_lines else 280.0)
+            mh = np.abs(config.C_KMS * (w_f / rest - 1.0)) <= (620.0 if broad_lines else 280.0)
             if np.any(mh):
                 k0 = int(np.argmin(ff[mh]))
                 mu0 = float(w_f[mh][k0])
@@ -1179,11 +1214,11 @@ def measure_h_beta_rv(
                 gamp = abs(gam) + 1e-4
                 vp = voigt_profile(z, sigp, gamp)
                 vp0 = voigt_profile(0.0, sigp, gamp) + 1e-99
-                return c0 + c1 * (x - HB_REST_A) - abs(amp) * vp / vp0
+                return c0 + c1 * (x - rest) - abs(amp) * vp / vp0
 
             def voigt_plus_lorentz_lin(x, amp_v, amp_l, center, sig, gam_v, gam_l, c0, c1):
                 return h_beta_joint_line_model(
-                    x, (amp_v, amp_l, center, sig, gam_v, gam_l, c0, c1), rest=HB_REST_A
+                    x, (amp_v, amp_l, center, sig, gam_v, gam_l, c0, c1), rest=rest
                 )
 
             p0v = [
@@ -1204,7 +1239,7 @@ def measure_h_beta_rv(
 
             gam_l_hi = max(
                 sig_hi * 2.6,
-                HB_REST_A * ((650.0 if broad_lines else 220.0) / config.C_KMS),
+                rest * ((650.0 if broad_lines else 220.0) / config.C_KMS),
             )
             try:
                 pv_w, _cw = curve_fit(voigt_lin, w_f, ff, p0=p0v, bounds=bounds_v, maxfev=16000)
@@ -1250,16 +1285,16 @@ def measure_h_beta_rv(
                     bounds=bounds_vl,
                     maxfev=32000,
                 )
-                rv_v = float(config.C_KMS * (popt[2] - HB_REST_A) / HB_REST_A)
+                rv_v = float(config.C_KMS * (popt[2] - rest) / rest)
                 err_v = (
-                    float(config.C_KMS * np.sqrt(np.diag(pcov))[2] / HB_REST_A)
+                    float(config.C_KMS * np.sqrt(np.diag(pcov))[2] / rest)
                     if pcov is not None
                     else float("nan")
                 )
                 err_v = _trust_rv_err(rv_v, err_v, _STRONG_RV_TRUST_HALF_WIDTH_KMS)
                 wf = np.linspace(w_lo, w_hi, max(300, len(w_f) * 5))
                 popt_arr = np.asarray(popt, dtype=float).reshape(8)
-                f_joint = h_beta_joint_line_model(wf, popt_arr, rest=HB_REST_A)
+                f_joint = h_beta_joint_line_model(wf, popt_arr, rest=rest)
             except Exception:
                 wf = None
                 f_joint = None
@@ -1334,7 +1369,7 @@ def measure_h_beta_rv(
             err_best = 5.0
 
     return {
-        "rest_a": HB_REST_A,
+        "rest_a": rest,
         "v_kms_plot": v0,
         "flux_plot": f_flat,
         "wavelength_plot": w0,
@@ -1354,6 +1389,27 @@ def measure_h_beta_rv(
         "err_lorentz_kms": float("nan"),
         "lorentz_model_fine": None,
     }
+
+
+def measure_h_beta_rv(
+    wave: np.ndarray,
+    flux_norm: np.ndarray,
+    *,
+    broad_lines: bool = False,
+    tpl_wave: np.ndarray | None = None,
+    tpl_flux_norm: np.ndarray | None = None,
+    resolving_power: float | None = None,
+) -> dict | None:
+    """Hβ-only wrapper around :func:`measure_strong_line_voigt_lorentz` (rest = :data:`HB_REST_A`)."""
+    return measure_strong_line_voigt_lorentz(
+        wave,
+        flux_norm,
+        rest=HB_REST_A,
+        broad_lines=broad_lines,
+        tpl_wave=tpl_wave,
+        tpl_flux_norm=tpl_flux_norm,
+        resolving_power=resolving_power,
+    )
 
 
 def fit_balmer_line_all_methods(

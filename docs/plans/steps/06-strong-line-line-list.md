@@ -34,11 +34,15 @@ Empirically chosen strong lines per Teff/S/N; extend `measure_h_beta_rv` API bey
 
 ## Implementation tasks
 
-- [ ] Survey candidates from `STRONG_LINES` / literature (`docs/broad_line_method.md`)
-- [ ] Validation sweep: recovery vs mask/template per Teff bin
-- [ ] Refactor `measure_strong_line_voigt_lorentz(rest=...)` from Hβ code
-- [ ] Wire best line(s) into pipeline `strong_lines` row
-- [ ] Update tests in `tests/test_h_beta_rv.py` or new module
+- [x] Survey candidates from `STRONG_LINES` / literature (`docs/broad_line_method.md`)
+- [ ] Validation sweep: recovery vs mask/template per Teff bin (use 114-stem campaign when ready)
+- [x] Refactor `measure_strong_line_voigt_lorentz(rest=...)` from Hβ code
+- [x] Wire best line(s) into pipeline `strong_lines` row (Teff-ordered single best)
+- [x] Update tests in `tests/test_h_beta_rv.py` (Hα synthetic + Teff order)
+
+## Open decisions (locked)
+
+- **Single best line per exposure** (not joint multi-line) for first ship.
 
 ## Key files
 
@@ -69,7 +73,3 @@ PYTHONPATH=. python -m pytest tests/test_h_beta_rv.py -q
 
 - [ ] Master todo `strong-line-line-list` → completed
 - [ ] Update `three_rv_methods` plan
-
-## Open decisions
-
-- Single best line per exposure vs multi-line joint fit?

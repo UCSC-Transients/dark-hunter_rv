@@ -123,7 +123,9 @@ def _parse_lte_hires_filename(fname: str) -> tuple[float, float, float] | None:
         teff = float(parts[0])
         if len(parts) == 3:
             logg = float(parts[1])
-            mh = float(parts[2])
+            # ``split("-", 2)`` consumes the sign before [M/H], so ``lte07200-3.50-1.0``
+            # yields parts[2] == ``1.0`` and must be restored as −1.0. Solar ``-0.0`` stays 0.
+            mh = -float(parts[2])
             return teff, logg, mh
         if len(parts) == 2:
             m = _LTE_GLUE_MH.match(parts[1])
