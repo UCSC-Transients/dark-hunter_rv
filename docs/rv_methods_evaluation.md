@@ -20,7 +20,7 @@ Implemented in `darkhunter_rv.method_evaluation.exposure_method_flags`:
 |--------|------------|
 | `mask_ccf` | `_weighted_method_rv_from_rows` returns finite RV and σ>0 after chunk QC and minimum chunk count (`MIN_MASK_CCF_CHUNKS_FOR_STACK`). |
 | `template_fft` | Same pattern for template chunks (`MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK`). |
-| `strong_lines` | Single `chunk_key=all` row (Voigt+Lorentz **Hβ** centroid today) with `qc_pass`, finite RV/err, σ in (0, 1e27]. |
+| `strong_lines` | Single `chunk_key=all` row (Voigt+Lorentz centroid; Teff-ordered single best of Hβ/Hγ/Hα/Hδ via `measure_strong_line_voigt_lorentz`) with `qc_pass`, finite RV/err, σ in (0, 1e27]. |
 
 **Overlap** for an exposure: `n_methods_valid ≥ 2`. Pairwise deltas (e.g. mask − template) are only defined when **both** methods in the pair are valid.
 

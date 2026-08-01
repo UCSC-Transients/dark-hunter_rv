@@ -1,10 +1,11 @@
 ---
 step_id: 06-strong-line-line-list
 phase: C
-status: pending
-github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/43
+status: in_progress
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/43
 branches:
   - step/06-strong-line-line-list
+  - step/10-template-fft-precision  # API shipped in PR #88
 depends_on: [05-short-pair-epoch-ccf]
 blocks: [07-sb2-search]
 master_todo_id: strong-line-line-list

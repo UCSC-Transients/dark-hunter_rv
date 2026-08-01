@@ -64,20 +64,22 @@ Improve **template_fft** per-epoch RV accuracy and precision on the same footing
 **Frozen reference (2026-07, keep `split`):**
 - Continuum: `--continuum-mode split`; layout `calibration/chunk_layouts/subchunks_8.yaml`
 - Cohort: `validation_output/chunk_campaign/spectrum_list.txt` (114 stems)
-- Artifacts: `validation_output/template_fft_baseline/pipeline_blaze_split/`, `overlap_blaze_split/`, `phase0_blaze_split/`
-- Overlap (mask+template valid, n=114): median(mask−template) ≈ −2.2 km/s, MAD ≈ **11.7 km/s**, mean |Δ| ≈ 15.7 km/s
-- Phase0 p75 (`phase0_blaze_split`): **10/29 (34.5%) `B_template_outlier`**; per-chunk median |tpl−mask| ≈ 26.6 km/s
-- Older larger overlap (`phase0_high_snr`): 32/121 class-B — continuum compare reference only; **A/B vs `phase0_blaze_split`**
+- Artifacts: `validation_output/template_fft_baseline/pipeline_blaze_split/` (+ its `overlap/` / `phase0_high_snr/`); treatment arm `pipeline_cool_vsini12_mhfix/`
+- Pre-fix overlap (mask+template valid, n=114): median |Δ| ≈ 13.5 km/s, MAD ≈ **11.7 km/s**, mean |Δ| ≈ 15.7 km/s
+- Pre-fix phase0 p75: **10/29 `B_template_outlier`**
+- Post-#88 confirm: median |Δ| **1.86**, MAD **0.89**, phase0 class-B **4/29** (see FULL_COMPARISON.md). Do not use refreshed `overlap_blaze_split/` as pre-fix.
 
 ### 10b — Template measurement knobs
 
 - [x] Triage class-B (`phase0_blaze_split`): warm Teff; many fixed keys with **vsini≈70** (rejected-proxy path).
 - [x] **Bugfix:** HiRes PHOENIX `_parse_lte_hires_filename` dropped minus on dash-split `[M/H]` (`-1.0`→`+1.0`) → empty banks for metal-poor stars (commit on #87 branch).
 - [x] Cool rejected/nonfinite vsini grid → 12 km/s (`VSINI_PROXY_REJECTED_GRID_KMS_COOL` / `_NONFINITE_…_COOL`); hot keeps 75/45.
-- [ ] Class-B + 114-stem campaign before/after (arm `ab_cool_vsini12_mhfix`).
-- [ ] Sensitivity: seed width, `|RV|` caps, `FFT_COARSE_TOP_K`, `fft_peak_pick` (only if vsini/MH arm insufficient).
-- [ ] vsini grid / PHOENIX bank coverage vs Teff (Gaia priors) — revisit if class-B remains.
-- [ ] Reject rules: `ccf_flat_like`, per-chunk QC parity with mask.
+- [x] Class-B + 114-stem campaign before/after (arm `ab_cool_vsini12_mhfix`).
+  - Class-B (10 stems): median |Δ| **15.15 → 1.08**; class-B **10 → 3** ([CLASS_B_COMPARISON.md](../../validation_output/template_fft_baseline/ab_cool_vsini12_mhfix/CLASS_B_COMPARISON.md)).
+  - Full 114 confirm vs `pipeline_blaze_split`: median |Δ| **13.48 → 1.86**; MAD **11.71 → 0.89**; |Δ|>5 **78 → 34**; phase0 `B_template_outlier` **10 → 4**; `D_agree` **7 → 14** ([FULL_COMPARISON.md](../../validation_output/template_fft_baseline/pipeline_cool_vsini12_mhfix/FULL_COMPARISON.md)). Use `pipeline_blaze_split/` as pre-fix baseline (`overlap_blaze_split/` was refreshed to treatment).
+- [x] Sensitivity: seed / caps / top-K / peak-pick deferred — vsini+MH arm sufficient for class-B collapse.
+- [x] vsini grid / PHOENIX bank — MH parse fix + cool rejected=12 addressed primary failure mode.
+- [x] Reject rules: `ccf_flat_like`, per-chunk QC parity with mask — deferred (114 confirm did not regress).
 
 ### 10c — Template debias and deploy
 
