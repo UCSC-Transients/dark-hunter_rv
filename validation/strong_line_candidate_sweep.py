@@ -381,9 +381,13 @@ def _summarize(per: pd.DataFrame) -> pd.DataFrame:
         helpful_rate = helpful_n / max(len(g_mask), 1) if len(g_mask) else 0.0
         if det_rate < 0.40:
             verdict = "exclude_undetected"
-        elif red and (not np.isfinite(med_t) or med_t > 0.02 or med_d > 25.0):
-            verdict = "exclude_red_risk"
-        elif act and helpful_rate < 0.35:
+        elif red and float(g["rest_a"].iloc[0]) >= RED_FRINGE_WARN_A:
+            # Numerically OK red lines still held: APF fringe / water redward of ~8000 Å.
+            if helpful_rate >= 0.50 and np.isfinite(med_d) and med_d <= 12.0:
+                verdict = "hold_red_fringe"
+            else:
+                verdict = "exclude_red_risk"
+        elif act and (det_rate < 0.50 or helpful_rate < 0.35 or (np.isfinite(med_d) and med_d > 20.0)):
             verdict = "exclude_activity_unstable"
         elif helpful_rate >= 0.50 and (not np.isfinite(med_d) or med_d <= 12.0):
             verdict = "keep_candidate"
