@@ -31,6 +31,29 @@ def test_measure_h_beta_rv_synthetic_broad_line():
     assert np.isfinite(float(out["rv_voigt_kms"]))
 
 
+def test_measure_strong_line_voigt_lorentz_halpha_synthetic():
+    rest = rv_core.HA_REST_A
+    w = np.linspace(rest - 95.0, rest + 95.0, 500)
+    true_rv = 22.0
+    w_line = rest * (1.0 + true_rv / config.C_KMS)
+    cont = 1.02 + 2e-4 * (w - w.mean())
+    line = 0.42 * np.exp(-0.5 * ((w - w_line) / 2.1) ** 2)
+    f = cont - line
+    out = rv_core.measure_strong_line_voigt_lorentz(w, f, rest=rest, broad_lines=True)
+    assert out is not None
+    assert abs(float(out["rest_a"]) - rest) < 1e-6
+    assert abs(float(out["rv_best_kms"]) - true_rv) < 22.0
+    assert np.isfinite(float(out["rv_voigt_kms"]))
+
+
+def test_strong_line_rests_for_teff_orders():
+    hot = rv_core.strong_line_rests_for_teff(6500.0)
+    cool = rv_core.strong_line_rests_for_teff(4500.0)
+    assert hot[0][0] == "Hbeta"
+    assert cool[0][0] == "Halpha"
+    assert {r for _, r in hot} >= {rv_core.HB_REST_A, rv_core.HA_REST_A}
+
+
 def test_measure_h_beta_rv_outside_window_returns_none():
     w = np.linspace(4000.0, 4100.0, 80)
     f = np.ones_like(w)

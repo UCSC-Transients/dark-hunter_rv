@@ -120,10 +120,11 @@ def _hb_joint_fit_params_json(bundle: dict) -> str:
 def _rv_kms_from_hb_joint_line_center(bundle: dict) -> float:
     """Radial velocity (km/s) from stored joint-fit line center λ_c; matches plots and model."""
     p = bundle.get("hb_joint_fit_params")
+    rest = float(bundle.get("rest_a", rv_core.HB_REST_A) or rv_core.HB_REST_A)
     if not p or len(p) < 8:
         return float(bundle.get("rv_voigt_kms", np.nan))
     ctr = float(p[2])
-    return float(config.C_KMS * (ctr - rv_core.HB_REST_A) / rv_core.HB_REST_A)
+    return float(config.C_KMS * (ctr - rest) / rest)
 
 
 def _weighted_rms(
@@ -1313,47 +1314,68 @@ def process_spectrum(
     hb_order: int | None = None
     nw_hb: np.ndarray | None = None
     nf_hb: np.ndarray | None = None
+    hb_rest = float(rv_core.HB_REST_A)
+    hb_line_name = "Hbeta"
     if use_fft_primary or run_multi or args.hb_rv_fallback:
         tw_hb, tf_hb = (None, None)
         if bank:
             tw_hb, tf_hb = next(iter(bank.values()))
         R_inst = float(getattr(instrument, "resolving_power", 60_000.0))
-        hb_rest = 4861.3
-        for o in valid_orders:
-            w_raw = np.array(spec_data[o]["wavelength"], float)
-            lo, hi = float(min(w_raw[0], w_raw[-1])), float(max(w_raw[0], w_raw[-1]))
-            if not (lo <= hb_rest <= hi):
-                continue
-            f_raw = np.array(spec_data[o]["flux"], float)
-            e_raw = np.array(spec_data[o]["eflux"], float)
-            try:
-                nw_h, nf_h, _neh = continuum.fit_continuum(
-                    w_raw,
-                    f_raw,
-                    e_raw,
-                    **_continuum_fit_kw(args, use_fft_primary, echelle_order=int(o), lane="strong"),
+        line_candidates = rv_core.strong_line_rests_for_teff(teff)
+        best_score = float("inf")
+        for cand_i, (line_name, rest_a) in enumerate(line_candidates):
+            for o in valid_orders:
+                w_raw = np.array(spec_data[o]["wavelength"], float)
+                lo, hi = float(min(w_raw[0], w_raw[-1])), float(max(w_raw[0], w_raw[-1]))
+                if not (lo <= float(rest_a) <= hi):
+                    continue
+                f_raw = np.array(spec_data[o]["flux"], float)
+                e_raw = np.array(spec_data[o]["eflux"], float)
+                try:
+                    nw_h, nf_h, _neh = continuum.fit_continuum(
+                        w_raw,
+                        f_raw,
+                        e_raw,
+                        **_continuum_fit_kw(args, use_fft_primary, echelle_order=int(o), lane="strong"),
+                    )
+                    nw_h, nf_h, _neh = continuum.despike_normalized_pre_ccf(
+                        nw_h, nf_h, np.ones_like(nf_h)
+                    )
+                except Exception:
+                    continue
+                hb_try = rv_core.measure_strong_line_voigt_lorentz(
+                    nw_h,
+                    nf_h,
+                    rest=float(rest_a),
+                    broad_lines=bool(use_fft_primary),
+                    tpl_wave=tw_hb,
+                    tpl_flux_norm=tf_hb,
+                    resolving_power=R_inst,
                 )
-                nw_h, nf_h, _neh = continuum.despike_normalized_pre_ccf(nw_h, nf_h, np.ones_like(nf_h))
-            except Exception:
-                continue
-            hb_try = rv_core.measure_h_beta_rv(
-                nw_h,
-                nf_h,
-                broad_lines=bool(use_fft_primary),
-                tpl_wave=tw_hb,
-                tpl_flux_norm=tf_hb,
-                resolving_power=R_inst,
-            )
-            if hb_try is not None:
-                hb_bundle = hb_try
-                hb_order = int(o)
-                nw_hb, nf_hb = nw_h, nf_h
+                if hb_try is None:
+                    continue
+                rv_try = _rv_kms_from_hb_joint_line_center(hb_try)
+                err_try = float(hb_try.get("err_voigt_kms", np.nan))
+                if not np.isfinite(rv_try):
+                    continue
+                # Prefer finite formal error; otherwise large penalty. Earlier Teff-band candidates win ties.
+                score = float(err_try) if np.isfinite(err_try) and err_try > 0 else 50.0
+                score += 0.5 * float(cand_i)
+                if score < best_score:
+                    best_score = score
+                    hb_bundle = hb_try
+                    hb_order = int(o)
+                    nw_hb, nf_hb = nw_h, nf_h
+                    hb_rest = float(rest_a)
+                    hb_line_name = str(line_name)
+            if hb_bundle is not None and line_name == "Hbeta" and best_score < 20.0:
+                # Good Hβ fit: stop (keep Hβ as primary when it works).
                 break
 
     if hb_bundle is not None and (run_multi or use_fft_primary or args.hb_rv_fallback):
         _hbp_json = _hb_joint_fit_params_json(hb_bundle)
         _rv_v_line = _rv_kms_from_hb_joint_line_center(hb_bundle)
-        # Single third method: Voigt+Lorentz centroid on Hβ (more strong lines later).
+        # Single third method: Voigt+Lorentz on best strong line for this Teff.
         diagnostics_rows.append(
             {
                 "file": spectrum_file,
@@ -1375,7 +1397,7 @@ def process_spectrum(
                 "ccf_width": np.nan,
                 "ccf_asymmetry": np.nan,
                 "qc_pass": True,
-                "qc_reason": "pending",
+                "qc_reason": f"pending:{hb_line_name}",
                 "chunk_scatter_kms": np.nan,
                 "residual_to_exposure_kms": np.nan,
                 "hb_joint_fit_params_json": _hbp_json,
