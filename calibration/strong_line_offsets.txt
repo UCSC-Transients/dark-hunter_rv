@@ -1,0 +1,15 @@
+# Per-line strong-lines RV offsets (km/s) vs mask truth (#93).
+# Subtract from raw Voigt+Lorentz line RV before IVW combine.
+# Source: median(line − mask) on 114-stem candidate sweep detections
+# (validation_output/strong_line_candidate_sweep/per_line_fits.csv).
+#
+# line_name  offset_kms
+Hbeta    0.494
+MgIb2    1.558
+MgIb3    2.665
+CaI6122  1.274
+CaI6162  1.687
+CaI4227  3.285
+Hgamma   0.0
+Hdelta   0.0
+Halpha   0.0

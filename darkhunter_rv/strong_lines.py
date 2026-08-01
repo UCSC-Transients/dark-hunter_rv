@@ -1,0 +1,279 @@
+"""
+Strong-line product helpers: candidate list metadata, inclusion gates, debias + IVW combine.
+
+Issues: #91 (wire metals), #92 (inclusion), #93 (debias/weights).
+"""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Mapping, Sequence
+
+import numpy as np
+
+from darkhunter_rv import config, qc
+
+logger = logging.getLogger(__name__)
+
+# Rest wavelengths (air Å) for product keep-candidates (#91).
+MG_IB2_REST_A = 5172.68
+MG_IB3_REST_A = 5183.60
+CA_I_6122_REST_A = 6122.22
+CA_I_6162_REST_A = 6162.17
+CA_I_4227_REST_A = 4226.73
+
+# Prefer Balmer Hβ first; then optical metals from the 114-stem keep list; then other Balmer.
+# Excludes Ca H&K, red IR, Fe I unhelpful, Mg I b₁ (blend).
+PRODUCT_STRONG_LINE_ORDER: tuple[tuple[str, float, bool], ...] = (
+    # name, rest_a, is_balmer (broad_lines path when hot)
+    ("Hbeta", 4861.3, True),
+    ("MgIb2", MG_IB2_REST_A, False),
+    ("CaI6122", CA_I_6122_REST_A, False),
+    ("CaI6162", CA_I_6162_REST_A, False),
+    ("MgIb3", MG_IB3_REST_A, False),
+    ("CaI4227", CA_I_4227_REST_A, False),
+    ("Hgamma", 4340.5, True),
+    ("Hdelta", 4101.7, True),
+    ("Halpha", 6562.8, True),
+)
+
+
+@dataclass(frozen=True)
+class StrongLineInclusionConfig:
+    """Gates for including a fitted line in the exposure strong_lines RV (#92)."""
+
+    min_depth: float = 0.05
+    max_err_kms: float = 40.0
+    min_snr: float = 3.0
+    min_width_kms: float = 3.0
+    max_width_kms: float = 250.0
+    max_abs_rv_kms: float = 400.0
+    max_telluric_frac: float = 0.08
+
+
+DEFAULT_INCLUSION = StrongLineInclusionConfig()
+
+
+def product_strong_line_rests() -> list[tuple[str, float]]:
+    """Ordered (name, rest_Å) for the product strong-lines loop."""
+    return [(n, float(r)) for n, r, _balmer in PRODUCT_STRONG_LINE_ORDER]
+
+
+def line_uses_broad_profile(line_name: str, *, hot_spectrum: bool) -> bool:
+    """Balmer lines use the broad Voigt window on hot stars; metals stay narrow."""
+    meta = {n: balmer for n, _r, balmer in PRODUCT_STRONG_LINE_ORDER}
+    if not meta.get(str(line_name), False):
+        return False
+    return bool(hot_spectrum) or str(line_name) == "Hbeta"
+
+
+def local_core_depth(wave: np.ndarray, flux_norm: np.ndarray, rest: float) -> float:
+    w = np.asarray(wave, float)
+    f = np.asarray(flux_norm, float)
+    m = (w >= rest - 25.0) & (w <= rest + 25.0) & np.isfinite(f)
+    if int(np.sum(m)) < 30:
+        return float("nan")
+    ww, ff = w[m], f[m]
+    core = (ww >= rest - 4.5) & (ww <= rest + 4.5)
+    wing = ~core
+    if int(np.sum(wing)) < 15 or int(np.sum(core)) < 5:
+        return float("nan")
+    cont = float(np.nanmedian(ff[wing]))
+    if not np.isfinite(cont) or cont <= 0.05:
+        return float("nan")
+    return float(1.0 - np.nanmin(ff[core]) / cont)
+
+
+def local_continuum_snr(wave: np.ndarray, flux_norm: np.ndarray, rest: float) -> float:
+    """Rough S/N from continuum wings: 1 / rms(flux−1) in ±25 Å excluding core."""
+    w = np.asarray(wave, float)
+    f = np.asarray(flux_norm, float)
+    m = (w >= rest - 25.0) & (w <= rest + 25.0) & np.isfinite(f)
+    if int(np.sum(m)) < 30:
+        return float("nan")
+    ww, ff = w[m], f[m]
+    wing = ~((ww >= rest - 4.5) & (ww <= rest + 4.5))
+    if int(np.sum(wing)) < 15:
+        return float("nan")
+    rms = float(np.nanstd(ff[wing] - np.nanmedian(ff[wing])))
+    if not np.isfinite(rms) or rms < 1e-6:
+        return float("nan")
+    return float(1.0 / rms)
+
+
+def fit_width_kms(bundle: Mapping, rest: float) -> float:
+    """Gaussian σ of joint Voigt+Lorentz fit converted to km/s."""
+    p = bundle.get("hb_joint_fit_params")
+    if p is None or len(p) < 8:
+        return float("nan")
+    sig_a = abs(float(p[3]))
+    r = float(rest)
+    if r <= 0:
+        return float("nan")
+    return float(config.C_KMS * sig_a / r)
+
+
+def telluric_fraction_near(wave: np.ndarray, rest: float, half_a: float = 40.0) -> float:
+    w = np.asarray(wave, float)
+    m = (w >= rest - half_a) & (w <= rest + half_a) & np.isfinite(w)
+    if int(np.sum(m)) < 5:
+        return float("nan")
+    bad = qc.wavelength_band_mask(w[m], qc.rv_contamination_bands())
+    return float(np.mean(bad))
+
+
+def strong_line_fit_metrics(
+    *,
+    wave: np.ndarray,
+    flux_norm: np.ndarray,
+    rest: float,
+    rv_kms: float,
+    err_kms: float,
+    bundle: Mapping | None = None,
+) -> dict[str, float]:
+    depth = local_core_depth(wave, flux_norm, rest)
+    snr_cont = local_continuum_snr(wave, flux_norm, rest)
+    # Line S/N proxy: depth × continuum S/N (absorptions need both depth and quiet continuum).
+    snr = float(depth * snr_cont) if np.isfinite(depth) and np.isfinite(snr_cont) else float("nan")
+    width = fit_width_kms(bundle or {}, rest) if bundle is not None else float("nan")
+    tfrac = telluric_fraction_near(wave, rest)
+    return {
+        "depth": float(depth) if np.isfinite(depth) else float("nan"),
+        "snr": snr,
+        "continuum_snr": float(snr_cont) if np.isfinite(snr_cont) else float("nan"),
+        "width_kms": float(width) if np.isfinite(width) else float("nan"),
+        "err_kms": float(err_kms) if np.isfinite(err_kms) else float("nan"),
+        "rv_kms": float(rv_kms) if np.isfinite(rv_kms) else float("nan"),
+        "telluric_frac": float(tfrac) if np.isfinite(tfrac) else float("nan"),
+    }
+
+
+def strong_line_passes_inclusion(
+    metrics: Mapping[str, float],
+    cfg: StrongLineInclusionConfig | None = None,
+) -> tuple[bool, str]:
+    """Return (pass, reason). Empty reason when pass (#92)."""
+    c = cfg or DEFAULT_INCLUSION
+    depth = float(metrics.get("depth", np.nan))
+    snr = float(metrics.get("snr", np.nan))
+    width = float(metrics.get("width_kms", np.nan))
+    err = float(metrics.get("err_kms", np.nan))
+    rv = float(metrics.get("rv_kms", np.nan))
+    tfrac = float(metrics.get("telluric_frac", np.nan))
+
+    if not np.isfinite(rv) or abs(rv) > c.max_abs_rv_kms:
+        return False, "bad_rv"
+    if not np.isfinite(err) or err <= 0 or err > c.max_err_kms:
+        return False, "bad_err"
+    if not np.isfinite(depth) or depth < c.min_depth:
+        return False, "shallow_depth"
+    if not np.isfinite(snr) or snr < c.min_snr:
+        return False, "low_snr"
+    if not np.isfinite(width) or width < c.min_width_kms:
+        return False, "too_narrow"
+    if width > c.max_width_kms:
+        return False, "too_broad"
+    if np.isfinite(tfrac) and tfrac > c.max_telluric_frac:
+        return False, "telluric"
+    return True, ""
+
+
+def read_strong_line_offsets(path: Path | None) -> dict[str, float]:
+    """
+    Load per-line RV offsets (km/s) to subtract from raw line RVs (#93).
+
+    File format: ``line_name offset_kms`` comments with ``#``. Missing file → {}.
+    """
+    if path is None or not Path(path).is_file():
+        return {}
+    out: dict[str, float] = {}
+    for raw in Path(path).read_text().splitlines():
+        s = raw.strip()
+        if not s or s.startswith("#"):
+            continue
+        parts = s.split()
+        if len(parts) < 2:
+            continue
+        try:
+            out[str(parts[0])] = float(parts[1])
+        except ValueError:
+            continue
+    return out
+
+
+def combine_strong_line_rvs(
+    measurements: Sequence[Mapping],
+    offsets: Mapping[str, float] | None = None,
+    *,
+    depth_weight_power: float = 1.0,
+    min_err_kms: float = 0.3,
+) -> dict:
+    """
+    Debias and inverse-variance combine included line RVs (#93).
+
+    Each measurement needs ``line``, ``rv_kms``, ``err_kms``, and optionally ``depth``.
+    Only rows with ``included`` True (default True if key absent) are used.
+    """
+    off = dict(offsets or {})
+    rvs: list[float] = []
+    wts: list[float] = []
+    used: list[str] = []
+    details: list[dict] = []
+    for m in measurements:
+        if not bool(m.get("included", True)):
+            continue
+        name = str(m["line"])
+        rv = float(m["rv_kms"])
+        err = float(m["err_kms"])
+        if not np.isfinite(rv) or not np.isfinite(err) or err <= 0:
+            continue
+        debias = float(off.get(name, 0.0))
+        rv_c = rv - debias
+        depth = float(m.get("depth", 1.0))
+        if not np.isfinite(depth) or depth <= 0:
+            depth = 1.0
+        err_eff = max(abs(err), float(min_err_kms))
+        w = (depth ** float(depth_weight_power)) / (err_eff * err_eff)
+        if not np.isfinite(w) or w <= 0:
+            continue
+        rvs.append(rv_c)
+        wts.append(w)
+        used.append(name)
+        details.append(
+            {
+                "line": name,
+                "rv_raw_kms": rv,
+                "offset_kms": debias,
+                "rv_debiased_kms": rv_c,
+                "err_kms": err,
+                "weight": w,
+                "depth": depth,
+            }
+        )
+    if not rvs:
+        return {
+            "rv_kms": float("nan"),
+            "err_kms": float("nan"),
+            "n_lines": 0,
+            "lines_used": [],
+            "details": [],
+        }
+    w_arr = np.asarray(wts, dtype=float)
+    rv_arr = np.asarray(rvs, dtype=float)
+    rv_ivw = float(np.sum(w_arr * rv_arr) / np.sum(w_arr))
+    err_ivw = float(1.0 / np.sqrt(np.sum(w_arr)))
+    return {
+        "rv_kms": rv_ivw,
+        "err_kms": err_ivw,
+        "n_lines": int(len(used)),
+        "lines_used": used,
+        "details": details,
+    }
+
+
+def default_strong_line_offsets_path() -> Path:
+    env = str(getattr(config, "STRONG_LINE_OFFSETS_FILE", "") or "").strip()
+    if env:
+        return Path(env)
+    return Path(config.REPO_ROOT) / "calibration" / "strong_line_offsets.txt"

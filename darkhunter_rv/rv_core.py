@@ -6,6 +6,7 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.optimize import curve_fit, least_squares
 from scipy.special import voigt_profile
 from . import config, qc, templates as tpl_bank
+from .strong_lines import product_strong_line_rests
 
 # Mask-CCF quality: contrast of peak vs lag-to-lag noise; Gaussian center must stay near grid argmax.
 _DEFAULT_MIN_CCF_PEAK_SNR = 3.2
@@ -1066,7 +1067,7 @@ HA_REST_A = 6562.8
 HG_REST_A = 4340.5
 HD_REST_A = 4101.7
 
-# Product strong-line candidates (name, rest Å). Order within a Teff band is preference.
+# Product strong-line candidates (name, rest Å). Prefer :func:`strong_line_rests_for_teff`.
 STRONG_LINE_CANDIDATES: list[tuple[str, float]] = [
     ("Hbeta", HB_REST_A),
     ("Halpha", HA_REST_A),
@@ -1077,22 +1078,14 @@ STRONG_LINE_CANDIDATES: list[tuple[str, float]] = [
 
 def strong_line_rests_for_teff(teff: float) -> list[tuple[str, float]]:
     """
-    Preferred strong-line rest wavelengths for an exposure Teff (single best later in pipeline).
+    Preferred strong-line rest wavelengths for an exposure (product list; #91).
 
-    Order is Hβ → Hγ → Hδ → Hα for all Teff on APF. Hβ is first (best coverage + validated).
-    Hα is last: the APF echellogram does not cover 6563 Å (114/114 no-order in the #43 Teff
-    sweep), so an Hα-first cool preference only wastes continuum/fit attempts. Hα remains listed
-    for instruments that cover it.
-
-    ``teff`` is retained for API compatibility / future Teff-dependent reordering.
+    Order: Hβ → Mg I b₂ → Ca I 6122 → Ca I 6162 → Mg I b₃ → Ca I 4227 → Hγ → Hδ → Hα.
+    Metals are the keep-candidates from the 114-stem sweep; Ca H&K and red IR are excluded.
+    ``teff`` retained for API compatibility / future Teff-dependent reordering.
     """
-    del teff  # currently unused; order is APF-wide
-    return [
-        ("Hbeta", HB_REST_A),
-        ("Hgamma", HG_REST_A),
-        ("Hdelta", HD_REST_A),
-        ("Halpha", HA_REST_A),
-    ]
+    del teff
+    return product_strong_line_rests()
 
 
 def h_beta_joint_line_model(
