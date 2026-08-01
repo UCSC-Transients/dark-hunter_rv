@@ -1,15 +1,16 @@
-# Per-line strong-lines RV offsets (km/s) vs mask truth (#93).
-# Subtract from raw Voigt+Lorentz line RV before IVW combine.
-# Source: median(line − mask) on 114-stem candidate sweep detections
-# (validation_output/strong_line_candidate_sweep/per_line_fits.csv).
+# Per-line strong-lines calibration (#93).
+# offset_kms: subtract from raw Voigt+Lorentz RV (median line−mask, 114-stem sweep).
+# quality: species prior weight, independent of per-exposure S/N / formal error.
+#   Defined as mad_ref/mad(|line−mask|) with mad_ref = best keep-line MAD (CaI6122).
+#   Exposure weight: w = quality / σ_eff²  (depth is not mixed into quality).
 #
-# line_name  offset_kms
-Hbeta    0.494
-MgIb2    1.558
-MgIb3    2.665
-CaI6122  1.274
-CaI6162  1.687
-CaI4227  3.285
-Hgamma   0.0
-Hdelta   0.0
-Halpha   0.0
+# line_name  offset_kms  quality
+Hbeta    0.494  0.326
+MgIb2    1.558  0.608
+MgIb3    2.665  0.537
+CaI6122  1.274  1.000
+CaI6162  1.687  0.895
+CaI4227  3.285  0.118
+Hgamma   0.000  0.200
+Hdelta   0.000  0.200
+Halpha   0.000  0.150

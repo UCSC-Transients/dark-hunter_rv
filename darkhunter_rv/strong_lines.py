@@ -179,15 +179,17 @@ def strong_line_passes_inclusion(
     return True, ""
 
 
-def read_strong_line_offsets(path: Path | None) -> dict[str, float]:
+def read_strong_line_calibration(path: Path | None) -> tuple[dict[str, float], dict[str, float]]:
     """
-    Load per-line RV offsets (km/s) to subtract from raw line RVs (#93).
+    Load per-line RV offsets (km/s) and species quality priors (#93).
 
-    File format: ``line_name offset_kms`` comments with ``#``. Missing file → {}.
+    File format: ``line_name offset_kms [quality]`` (``#`` comments).
+    Missing quality defaults to 1.0. Missing file → ({}, {}).
     """
     if path is None or not Path(path).is_file():
-        return {}
-    out: dict[str, float] = {}
+        return {}, {}
+    offsets: dict[str, float] = {}
+    qualities: dict[str, float] = {}
     for raw in Path(path).read_text().splitlines():
         s = raw.strip()
         if not s or s.startswith("#"):
@@ -195,27 +197,52 @@ def read_strong_line_offsets(path: Path | None) -> dict[str, float]:
         parts = s.split()
         if len(parts) < 2:
             continue
+        name = str(parts[0])
         try:
-            out[str(parts[0])] = float(parts[1])
+            offsets[name] = float(parts[1])
         except ValueError:
             continue
-    return out
+        if len(parts) >= 3:
+            try:
+                q = float(parts[2])
+            except ValueError:
+                q = 1.0
+            qualities[name] = q if np.isfinite(q) and q > 0 else 1.0
+        else:
+            qualities[name] = 1.0
+    return offsets, qualities
+
+
+def read_strong_line_offsets(path: Path | None) -> dict[str, float]:
+    """Backward-compatible: offsets only."""
+    offsets, _qualities = read_strong_line_calibration(path)
+    return offsets
 
 
 def combine_strong_line_rvs(
     measurements: Sequence[Mapping],
     offsets: Mapping[str, float] | None = None,
     *,
-    depth_weight_power: float = 1.0,
+    qualities: Mapping[str, float] | None = None,
+    depth_weight_power: float = 0.0,
     min_err_kms: float = 0.3,
+    default_quality: float = 1.0,
 ) -> dict:
     """
-    Debias and inverse-variance combine included line RVs (#93).
+    Debias and combine included line RVs (#93).
 
-    Each measurement needs ``line``, ``rv_kms``, ``err_kms``, and optionally ``depth``.
-    Only rows with ``included`` True (default True if key absent) are used.
+    Weight per line::
+
+        w = Q_line * depth^p / σ_eff²
+
+    ``Q_line`` is a **species quality prior** (from calibration; independent of this
+    exposure's S/N). Formal ``err_kms`` carries the per-exposure uncertainty / S/N.
+    Default ``depth_weight_power=0`` so depth is not double-counted with S/N.
+
+    Each measurement needs ``line``, ``rv_kms``, ``err_kms``; optional ``depth``, ``included``.
     """
     off = dict(offsets or {})
+    qual = dict(qualities or {})
     rvs: list[float] = []
     wts: list[float] = []
     used: list[str] = []
@@ -230,11 +257,14 @@ def combine_strong_line_rvs(
             continue
         debias = float(off.get(name, 0.0))
         rv_c = rv - debias
+        q = float(qual.get(name, default_quality))
+        if not np.isfinite(q) or q <= 0:
+            q = float(default_quality)
         depth = float(m.get("depth", 1.0))
         if not np.isfinite(depth) or depth <= 0:
             depth = 1.0
         err_eff = max(abs(err), float(min_err_kms))
-        w = (depth ** float(depth_weight_power)) / (err_eff * err_eff)
+        w = float(q) * (depth ** float(depth_weight_power)) / (err_eff * err_eff)
         if not np.isfinite(w) or w <= 0:
             continue
         rvs.append(rv_c)
@@ -247,6 +277,7 @@ def combine_strong_line_rvs(
                 "offset_kms": debias,
                 "rv_debiased_kms": rv_c,
                 "err_kms": err,
+                "quality": q,
                 "weight": w,
                 "depth": depth,
             }

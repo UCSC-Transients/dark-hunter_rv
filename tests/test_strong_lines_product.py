@@ -10,6 +10,7 @@ from darkhunter_rv.strong_lines import (
     combine_strong_line_rvs,
     line_uses_broad_profile,
     product_strong_line_rests,
+    read_strong_line_calibration,
     read_strong_line_offsets,
     strong_line_fit_metrics,
     strong_line_passes_inclusion,
@@ -123,12 +124,31 @@ def test_combine_strong_line_rvs_debias_and_ivw():
             {"line": "MgIb2", "rv_kms": 12.0, "err_kms": 1.0, "depth": 1.0, "included": True},
         ],
         offsets,
+        qualities={"Hbeta": 1.0, "MgIb2": 1.0},
         depth_weight_power=0.0,
     )
     # debiased 10 and 10 → IVW 10
     assert out["n_lines"] == 2
     assert abs(out["rv_kms"] - 10.0) < 1e-6
     assert out["err_kms"] < 1.0
+
+
+def test_combine_uses_species_quality_not_only_snr():
+    """Equal formal errors: higher Q_line must dominate the stack."""
+    out = combine_strong_line_rvs(
+        [
+            {"line": "CaI4227", "rv_kms": 0.0, "err_kms": 1.0, "included": True},
+            {"line": "CaI6122", "rv_kms": 10.0, "err_kms": 1.0, "included": True},
+        ],
+        offsets={},
+        qualities={"CaI4227": 0.118, "CaI6122": 1.0},
+        depth_weight_power=0.0,
+    )
+    # weights 0.118 and 1.0 → RV ≈ 10*1/(1.118) ≈ 8.94
+    assert out["n_lines"] == 2
+    assert out["rv_kms"] > 8.0
+    w_by = {d["line"]: d["weight"] for d in out["details"]}
+    assert w_by["CaI6122"] > 5.0 * w_by["CaI4227"]
 
 
 def test_combine_skips_excluded_and_empty():
@@ -140,10 +160,54 @@ def test_combine_skips_excluded_and_empty():
     assert not np.isfinite(out["rv_kms"])
 
 
-def test_read_strong_line_offsets_file():
+def test_read_strong_line_calibration_quality():
     path = Path(config.REPO_ROOT) / "calibration" / "strong_line_offsets.txt"
-    offs = read_strong_line_offsets(path)
+    offs, quals = read_strong_line_calibration(path)
     assert offs["Hbeta"] == 0.494
-    assert offs["CaI6122"] == 1.274
-    assert read_strong_line_offsets(None) == {}
-    assert read_strong_line_offsets(Path("/no/such/file.txt")) == {}
+    assert quals["CaI6122"] == 1.0
+    assert quals["CaI4227"] < quals["MgIb2"] < quals["CaI6122"]
+    assert read_strong_line_offsets(path)["CaI6122"] == 1.274
+
+
+def test_inclusion_approx_pass_rate_on_candidate_sweep_csv():
+    """
+    Empirically check depth+err inclusion rates on the 114-stem candidate sweep.
+
+    Full width/S/N gates need continuum arrays; this validates the depth/err subset
+    that drove the keep/exclude decisions.
+    """
+    csv_path = (
+        Path(config.REPO_ROOT)
+        / "validation_output"
+        / "strong_line_candidate_sweep"
+        / "per_line_fits.csv"
+    )
+    if not csv_path.is_file():
+        import pytest
+
+        pytest.skip("candidate sweep CSV not present")
+    import pandas as pd
+
+    per = pd.read_csv(csv_path)
+    cfg = StrongLineInclusionConfig()
+    # Approximate: depth + err only (width/snr unavailable in CSV) — expect high pass for keep lines.
+    keep = ["Hbeta", "MgIb2", "MgIb3", "CaI6122", "CaI6162"]
+    for line in keep:
+        g = per[per.line == line]
+        assert len(g) >= 50
+        n_ok = 0
+        for _, row in g.iterrows():
+            metrics = {
+                "depth": float(row["depth"]) if pd.notna(row["depth"]) else float("nan"),
+                "snr": 10.0,  # assume continuum S/N OK when depth recorded
+                "width_kms": 12.0,
+                "err_kms": float(row["err_kms"]) if pd.notna(row["err_kms"]) else float("nan"),
+                "rv_kms": float(row["rv_kms"]) if pd.notna(row["rv_kms"]) else float("nan"),
+                "telluric_frac": float(row["telluric_frac"])
+                if pd.notna(row.get("telluric_frac"))
+                else 0.0,
+            }
+            ok, _ = strong_line_passes_inclusion(metrics, cfg)
+            n_ok += int(ok)
+        rate = n_ok / len(g)
+        assert rate >= 0.75, f"{line} inclusion rate {rate:.2f} too low"

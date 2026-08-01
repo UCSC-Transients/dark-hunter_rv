@@ -20,7 +20,7 @@ from .strong_lines import (
     StrongLineInclusionConfig,
     combine_strong_line_rvs,
     line_uses_broad_profile,
-    read_strong_line_offsets,
+    read_strong_line_calibration,
     strong_line_fit_metrics,
     strong_line_passes_inclusion,
 )
@@ -1422,8 +1422,8 @@ def process_spectrum(
                         hb_line_name = str(best_for_line["line"])
 
         included = [m for m in strong_line_measurements if m.get("included")]
-        offsets = read_strong_line_offsets(config.STRONG_LINE_OFFSETS_FILE)
-        combined = combine_strong_line_rvs(included, offsets)
+        offsets, qualities = read_strong_line_calibration(config.STRONG_LINE_OFFSETS_FILE)
+        combined = combine_strong_line_rvs(included, offsets, qualities=qualities)
         _rv_v_line = float("nan")
         if combined["n_lines"] >= 1 and np.isfinite(combined["rv_kms"]):
             if hb_bundle is None and included:

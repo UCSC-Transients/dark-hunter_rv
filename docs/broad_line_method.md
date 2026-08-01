@@ -36,9 +36,22 @@ Order in `strong_line_rests_for_teff` / `product_strong_line_rests`:
 
 ## Debias + weights (#93)
 
-Offsets: `calibration/strong_line_offsets.txt` (median line−mask from 114-stem sweep).  
-Weight: depth^p / σ² (default p=1). Combined RV written as one `strong_lines` diagnostics row
-(`qc_reason=ivw_n=…:Line1,Line2`).
+File: `calibration/strong_line_offsets.txt` — columns `line_name offset_kms quality`.
+
+- **offset**: median(line − mask) from the 114-stem candidate sweep.
+- **quality**: species prior \(Q = \mathrm{mad}_{ref}/\mathrm{mad}(|\mathrm{line}-\mathrm{mask}|)\),
+  independent of per-exposure S/N (`mad_ref` = Ca I 6122). Ca I 6122 → 1.0; Ca I 4227 → ~0.12.
+- **Exposure weight**: \(w = Q_{\mathrm{line}} / \sigma_{\mathrm{eff}}^{2}\)
+  (formal fit error carries S/N; depth is not mixed into \(Q\)).
+
+Combined RV → one `strong_lines` diagnostics row (`qc_reason=ivw_n=…:Line1,Line2`).
+
+### Testing notes
+
+- Inclusion: unit tests for gate logic; approximate depth+err pass rates on the candidate-sweep CSV
+  (≥75% for keep lines). Full width/S/N gates were **not** re-run through the live pipeline on all 114
+  stems after wiring.
+- Weights: unit test that equal σ but different \(Q\) changes the stack (CaI6122 ≫ CaI4227).
 
 ## Metal / secondary candidate survey (114 stems)
 
