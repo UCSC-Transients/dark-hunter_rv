@@ -38,20 +38,31 @@ Order in `strong_line_rests_for_teff` / `product_strong_line_rests`:
 
 File: `calibration/strong_line_offsets.txt` — columns `line_name offset_kms quality`.
 
-- **offset**: median(line − mask) from the 114-stem candidate sweep.
-- **quality**: species prior \(Q = \mathrm{mad}_{ref}/\mathrm{mad}(|\mathrm{line}-\mathrm{mask}|)\),
-  independent of per-exposure S/N (`mad_ref` = Ca I 6122). Ca I 6122 → 1.0; Ca I 4227 → ~0.12.
-- **Exposure weight**: \(w = Q_{\mathrm{line}} / \sigma_{\mathrm{eff}}^{2}\)
-  (formal fit error carries S/N; depth is not mixed into \(Q\)).
+**Calibration (must debias before ranking quality):**
 
-Combined RV → one `strong_lines` diagnostics row (`qc_reason=ivw_n=…:Line1,Line2`).
+1. `offset_L = median(RV_L − mask)`
+2. debiased residual = `(RV_L − offset_L) − mask`
+3. `quality_L = mad_ref / MAD(|debiased residual|)` (Ca I 6122 = 1)
+
+Quality is how well the line recovers the correct RV **after** removing its systematic
+offset — comparable across lines. It is not S/N.
+
+**Exposure stack:**
+
+\[
+w = Q_{\mathrm{line}} \times (\mathrm{S/N}_{\mathrm{at\,line}})^{2}
+\]
+
+S/N at the line is per-exposure (`strong_line_fit_metrics` → `snr`). Formal fit error is
+not used as the quality term.
+
+Combined RV → one `strong_lines` row (`qc_reason=ivw_n=…`).
 
 ### Testing notes
 
-- Inclusion: unit tests for gate logic; approximate depth+err pass rates on the candidate-sweep CSV
-  (≥75% for keep lines). Full width/S/N gates were **not** re-run through the live pipeline on all 114
-  stems after wiring.
-- Weights: unit test that equal σ but different \(Q\) changes the stack (CaI6122 ≫ CaI4227).
+- Unit tests: quality from debiased residuals; `w = Q·SNR²` separates species quality from S/N.
+- Campaign: file qualities match `estimate_strong_line_offsets_and_qualities` on the sweep CSV.
+- Inclusion: unit tests + approximate depth/err rates on the sweep CSV (not a full 114 re-pipeline).
 
 ## Metal / secondary candidate survey (114 stems)
 

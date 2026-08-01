@@ -1,8 +1,15 @@
 # Per-line strong-lines calibration (#93).
-# offset_kms: subtract from raw Voigt+Lorentz RV (median line−mask, 114-stem sweep).
-# quality: species prior weight, independent of per-exposure S/N / formal error.
-#   Defined as mad_ref/mad(|line−mask|) with mad_ref = best keep-line MAD (CaI6122).
-#   Exposure weight: w = quality / σ_eff²  (depth is not mixed into quality).
+#
+# Procedure:
+#   1. offset = median(RV_line − mask)
+#   2. debiased residual = (RV_line − offset) − mask
+#   3. quality = mad_ref / MAD(|debiased residual|)   (CaI6122 = 1)
+#
+# Quality = relative ability to recover the correct RV AFTER debias.
+# Exposure weight in the stack: w = quality × (S/N_at_line)²
+# (S/N is per-exposure; quality is species-level and S/N-independent.)
+#
+# Source: validation_output/strong_line_candidate_sweep/per_line_fits.csv
 #
 # line_name  offset_kms  quality
 Hbeta    0.494  0.326

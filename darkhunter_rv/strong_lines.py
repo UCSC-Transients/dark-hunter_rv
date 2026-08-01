@@ -179,6 +179,50 @@ def strong_line_passes_inclusion(
     return True, ""
 
 
+def estimate_strong_line_offsets_and_qualities(
+    rows: Sequence[Mapping],
+    *,
+    mask_key: str = "mask_rv_kms",
+    rv_key: str = "rv_kms",
+    line_key: str = "line",
+) -> tuple[dict[str, float], dict[str, float]]:
+    """
+    Estimate per-line offsets and relative qualities from a campaign table.
+
+    Procedure (#93 / user requirement):
+      1. offset_L = median(RV_L − mask) for each line
+      2. debiased residual = (RV_L − offset_L) − mask
+      3. quality_L ∝ 1 / MAD(|debiased residual|)  (normalized so max = 1)
+
+    Quality is how well the **debiased** line recovers the reference RV relative to
+    other lines. It must not be inferred from raw (biased) RVs.
+    """
+    by_line: dict[str, list[float]] = {}
+    for row in rows:
+        name = str(row[line_key])
+        rv = float(row[rv_key])
+        mask = float(row[mask_key])
+        if not np.isfinite(rv) or not np.isfinite(mask):
+            continue
+        by_line.setdefault(name, []).append(rv - mask)
+
+    offsets: dict[str, float] = {}
+    for name, diffs in by_line.items():
+        arr = np.asarray(diffs, dtype=float)
+        offsets[name] = float(np.median(arr))
+
+    mads: dict[str, float] = {}
+    for name, diffs in by_line.items():
+        arr = np.asarray(diffs, dtype=float)
+        resid = arr - float(offsets[name])  # debiased vs mask
+        mad = float(np.median(np.abs(resid)))
+        mads[name] = mad if mad > 1e-6 else 1e-6
+
+    mad_ref = min(mads.values()) if mads else 1.0
+    qualities = {name: float(mad_ref / mad) for name, mad in mads.items()}
+    return offsets, qualities
+
+
 def read_strong_line_calibration(path: Path | None) -> tuple[dict[str, float], dict[str, float]]:
     """
     Load per-line RV offsets (km/s) and species quality priors (#93).
@@ -224,22 +268,23 @@ def combine_strong_line_rvs(
     offsets: Mapping[str, float] | None = None,
     *,
     qualities: Mapping[str, float] | None = None,
-    depth_weight_power: float = 0.0,
-    min_err_kms: float = 0.3,
+    min_snr: float = 0.5,
     default_quality: float = 1.0,
 ) -> dict:
     """
-    Debias and combine included line RVs (#93).
+    Debias each line, then IVW with separated quality and S/N weights (#93).
 
-    Weight per line::
+    For each included measurement::
 
-        w = Q_line * depth^p / σ_eff²
+        rv_c = rv_raw − offset_line
+        w    = Q_line × snr_at_line²
 
-    ``Q_line`` is a **species quality prior** (from calibration; independent of this
-    exposure's S/N). Formal ``err_kms`` carries the per-exposure uncertainty / S/N.
-    Default ``depth_weight_power=0`` so depth is not double-counted with S/N.
+    - ``Q_line`` — species quality from **debiased** campaign residuals (how well the
+      line recovers the correct RV after removing its systematic offset).
+    - ``snr_at_line`` — per-exposure S/N at that line (from ``snr`` in the measurement;
+      falls back to ``depth / err_kms`` if needed).
 
-    Each measurement needs ``line``, ``rv_kms``, ``err_kms``; optional ``depth``, ``included``.
+    Formal fit error alone is not used as the quality term.
     """
     off = dict(offsets or {})
     qual = dict(qualities or {})
@@ -252,19 +297,22 @@ def combine_strong_line_rvs(
             continue
         name = str(m["line"])
         rv = float(m["rv_kms"])
-        err = float(m["err_kms"])
-        if not np.isfinite(rv) or not np.isfinite(err) or err <= 0:
+        if not np.isfinite(rv):
             continue
         debias = float(off.get(name, 0.0))
         rv_c = rv - debias
         q = float(qual.get(name, default_quality))
         if not np.isfinite(q) or q <= 0:
             q = float(default_quality)
-        depth = float(m.get("depth", 1.0))
-        if not np.isfinite(depth) or depth <= 0:
-            depth = 1.0
-        err_eff = max(abs(err), float(min_err_kms))
-        w = float(q) * (depth ** float(depth_weight_power)) / (err_eff * err_eff)
+        snr = float(m.get("snr", np.nan))
+        if not np.isfinite(snr) or snr <= 0:
+            depth = float(m.get("depth", np.nan))
+            err = float(m.get("err_kms", np.nan))
+            if np.isfinite(depth) and depth > 0 and np.isfinite(err) and err > 0:
+                snr = float(depth / err)
+        if not np.isfinite(snr) or snr < float(min_snr):
+            continue
+        w = float(q) * float(snr) * float(snr)
         if not np.isfinite(w) or w <= 0:
             continue
         rvs.append(rv_c)
@@ -276,10 +324,11 @@ def combine_strong_line_rvs(
                 "rv_raw_kms": rv,
                 "offset_kms": debias,
                 "rv_debiased_kms": rv_c,
-                "err_kms": err,
+                "snr_at_line": snr,
                 "quality": q,
                 "weight": w,
-                "depth": depth,
+                "err_kms": float(m.get("err_kms", np.nan)),
+                "depth": float(m.get("depth", np.nan)),
             }
         )
     if not rvs:
