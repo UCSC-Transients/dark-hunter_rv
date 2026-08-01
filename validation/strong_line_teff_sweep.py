@@ -138,11 +138,12 @@ def fit_all_balmer_lines(
     teff: float,
     continuum_mode: str,
     blaze_cal: BlazeCalibration | None,
+    instrument_name: str = "APF",
 ) -> list[dict]:
     """Fit every Balmer candidate that falls on an echelle order; no short-circuit."""
-    instrument = instruments.guess_instrument(str(spectrum_path))
-    spec_data = io_utils.load_spectrum(str(spectrum_path), instrument)
-    valid_orders = instruments.valid_orders(instrument, spec_data)
+    instrument = instruments.get_instrument_profile(instrument_name)
+    _, spec_data = io_utils.read_spectrum(str(spectrum_path))
+    valid_orders = sorted(o for o in spec_data if o not in instrument.bad_orders)
     hot = float(teff) >= float(config.METHOD_REGION_STRONG_LINES_MIN_TEFF_K)
     pref = {name: i for i, (name, _) in enumerate(rv_core.strong_line_rests_for_teff(teff))}
     R_inst = float(getattr(instrument, "resolving_power", 60_000.0))
@@ -251,6 +252,7 @@ def run_sweep(
     out_dir: Path,
     continuum_mode: str,
     blaze_path: Path | None,
+    instrument_name: str = "APF",
     limit: int | None = None,
 ) -> pd.DataFrame:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -288,6 +290,7 @@ def run_sweep(
             teff=teff,
             continuum_mode=continuum_mode,
             blaze_cal=blaze_cal,
+            instrument_name=instrument_name,
         )
         ok_fits = [c for c in fits if c.get("ok")]
         for c in fits:
@@ -482,6 +485,7 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=config.BLAZE_CALIBRATION_FILE,
     )
+    p.add_argument("--instrument", default="APF")
     p.add_argument("--limit", type=int, default=None, help="Optional cap for smoke runs")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
@@ -496,6 +500,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=args.out_dir,
         continuum_mode=str(args.continuum_mode),
         blaze_path=args.blaze_calibration,
+        instrument_name=str(args.instrument),
         limit=args.limit,
     )
     return 0
