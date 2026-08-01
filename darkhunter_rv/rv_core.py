@@ -1079,22 +1079,19 @@ def strong_line_rests_for_teff(teff: float) -> list[tuple[str, float]]:
     """
     Preferred strong-line rest wavelengths for an exposure Teff (single best later in pipeline).
 
-    Warm/hot (Teff ≥ 5500): Hβ first (best APF coverage + validated), then Hγ, Hα, Hδ.
-    Cooler: still try Hβ then Hα (Hα stronger in cool stars when covered).
+    Order is Hβ → Hγ → Hδ → Hα for all Teff on APF. Hβ is first (best coverage + validated).
+    Hα is last: the APF echellogram does not cover 6563 Å (114/114 no-order in the #43 Teff
+    sweep), so an Hα-first cool preference only wastes continuum/fit attempts. Hα remains listed
+    for instruments that cover it.
+
+    ``teff`` is retained for API compatibility / future Teff-dependent reordering.
     """
-    t = float(teff) if teff == teff else float(config.DEFAULT_TEFF)
-    if t >= float(config.METHOD_REGION_STRONG_LINES_MIN_TEFF_K):
-        return [
-            ("Hbeta", HB_REST_A),
-            ("Hgamma", HG_REST_A),
-            ("Halpha", HA_REST_A),
-            ("Hdelta", HD_REST_A),
-        ]
+    del teff  # currently unused; order is APF-wide
     return [
-        ("Halpha", HA_REST_A),
         ("Hbeta", HB_REST_A),
         ("Hgamma", HG_REST_A),
         ("Hdelta", HD_REST_A),
+        ("Halpha", HA_REST_A),
     ]
 
 
