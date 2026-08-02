@@ -622,6 +622,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | PLOTS-04 | **done** | `fa0578c` on `step/04-adopted-rv-match-plots` | adopted_rv_match plot + pipeline hook; visual residual |
 | 2026-08-02 | EPOCH-MATRIX | launched | `step/11-epoch-ccf-matrix-cli` | Phase 4 |
 | 2026-08-02 | EPOCH-MATRIX | **done** | `be9b0a3` on `step/11-epoch-ccf-matrix-cli` | real star 468391…; diag~0; SHORTPAIR next |
+| 2026-08-02 | SHORTPAIR-05A | launched | `step/05a-short-pair-calibration` | — |
 
 ---
 
