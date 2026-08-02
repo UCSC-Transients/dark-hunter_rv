@@ -14,7 +14,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 
 | Lane | Steps | Status |
 |------|-------|--------|
-| **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; **bias keep Jun-16 (rebuild deferred pre-final)** |
+| **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; bias keep Jun-16; **step 01 complete (waivers)** |
 | **template_fft** | 10 | **Complete** (#88 + 10c offsets `method_rv_offsets.txt`) |
 | **strong_lines** | 06 | **Complete** ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) — Hβ-primary Balmer; metals + Q×SNR² IVW |
 | **epoch_ccf** (relative) | 11 | **in_progress** — spike done (`epoch_ccf.py` + WLS); matrix CLI next ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
