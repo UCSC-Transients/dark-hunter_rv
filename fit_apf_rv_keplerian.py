@@ -40,12 +40,14 @@ from darkhunter_rv.apf_observability import (
     normalize_observability_window,
     observability_for_summary,
 )
+from darkhunter_rv.rv_point_filters import rv_epoch_is_valid
 from darkhunter_rv.summary_paths import (
     count_pipeline_rows,
     discover_summary_files,
     discover_summary_path,
     parse_object_id_from_summary,
 )
+from validation.rv_overlap_lib import bjd_to_mjd, load_literature_epochs
 from darkhunter_rv.thiele_innes_inclination import fill_inclination_in_metadata, inclination_from_row_dict
 from scipy.optimize import least_squares, minimize_scalar
 import matplotlib.pyplot as plt
@@ -558,8 +560,6 @@ def parse_summary(path: Path) -> List[RVPoint]:
             rv = float(parts[2])
         except ValueError:
             continue
-        from darkhunter_rv.rv_point_filters import rv_epoch_is_valid
-
         try:
             mjd = float(parts[1])
         except ValueError:
@@ -595,8 +595,6 @@ def parse_summary(path: Path) -> List[RVPoint]:
             tel = str(r.get("telescope", "LITERATURE") or "LITERATURE")
         except Exception:
             continue
-        from darkhunter_rv.rv_point_filters import rv_epoch_is_valid
-
         if not rv_epoch_is_valid(mjd, rv):
             continue
         if not np.isfinite(rv_err) or rv_err <= 0:
@@ -614,6 +612,84 @@ def parse_summary(path: Path) -> List[RVPoint]:
         )
     points.sort(key=lambda p: p.mjd)
     return points
+
+
+
+def literature_master_points_for_gaia(
+    gaia_source_id: str | None,
+    master_path: Path | None,
+) -> List[RVPoint]:
+    """
+    Optional orbit-plot overlay: literature master CSV epochs for one Gaia id.
+
+    Telescope label uses ``instrument`` when present, else ``LITERATURE_MASTER``.
+    """
+    if not gaia_source_id or master_path is None:
+        return []
+    path = Path(master_path)
+    if not path.is_file():
+        return []
+    lit = load_literature_epochs(path)
+    if lit.empty:
+        return []
+    gid = str(gaia_source_id)
+    rows = lit[lit["gaia_dr3_id"].astype(str) == gid]
+    out: List[RVPoint] = []
+    for _, row in rows.iterrows():
+        try:
+            bjd = float(row["bjd"])
+            rv = float(row["rv_kms"])
+        except (TypeError, ValueError):
+            continue
+        if not np.isfinite(bjd) or not np.isfinite(rv):
+            continue
+        mjd = bjd_to_mjd(bjd)
+        if not rv_epoch_is_valid(mjd, rv):
+            continue
+        try:
+            rv_err = float(row["rv_err_kms"])
+        except (TypeError, ValueError):
+            rv_err = float("nan")
+        if not np.isfinite(rv_err) or rv_err <= 0:
+            rv_err = 1.0
+        inst = str(row.get("instrument", "") or "").strip() or "LITERATURE_MASTER"
+        ref = str(row.get("reference_key", "") or "master")
+        out.append(
+            RVPoint(
+                file=f"literature_master:{ref}:{inst}",
+                mjd=mjd,
+                rv=rv,
+                rv_err=max(rv_err, 1e-4),
+                rms=max(rv_err, 1e-4),
+                telescope=inst,
+                is_literature=True,
+            )
+        )
+    return out
+
+
+def merge_literature_master_points(
+    points: List[RVPoint],
+    gaia_source_id: str | None,
+    master_path: Path | None,
+    *,
+    match_tol_days: float = 0.05,
+) -> List[RVPoint]:
+    """Append master-CSV literature epochs not already present within ``match_tol_days``."""
+    extra = literature_master_points_for_gaia(gaia_source_id, master_path)
+    if not extra:
+        return points
+    merged = list(points)
+    for ep in extra:
+        dup = False
+        for p in merged:
+            if abs(float(p.mjd) - float(ep.mjd)) <= match_tol_days and abs(float(p.rv) - float(ep.rv)) < 1e-3:
+                dup = True
+                break
+        if not dup:
+            merged.append(ep)
+    merged.sort(key=lambda p: p.mjd)
+    return merged
 
 
 def solve_kepler_eccentric_anomaly(M: np.ndarray, e: float, n_iter: int = 30) -> np.ndarray:
@@ -1859,6 +1935,7 @@ def run_one(
     table_m1_msun: Optional[float] = None,
     fit_jitter: bool = False,
     jitter_kms: Optional[float] = None,
+    literature_master: Optional[Path] = None,
 ) -> Optional[dict]:
     from darkhunter_rv.rv_keplerian_plots import (
         our_telescope_points,
@@ -1868,6 +1945,8 @@ def run_one(
     )
 
     points = parse_summary(summary_path)
+    gaia_source_id_early = parse_object_id_from_summary(summary_path)
+    points = merge_literature_master_points(points, gaia_source_id_early, literature_master)
     n_epochs = len(points)
     if n_epochs < min_points:
         print(
@@ -2086,6 +2165,11 @@ def main() -> None:
         default=None,
         help="Fixed intrinsic jitter (km/s) added in quadrature to formal errors (mutually exclusive with --fit-jitter).",
     )
+    parser.add_argument(
+        "--literature-master",
+        default=None,
+        help="Optional literature master CSV (e.g. calibration/literature_rv_master.csv) to overlay published epochs on plots/fits.",
+    )
     parser.add_argument("--force", action="store_true", help="Recompute even if report JSON is newer than summary.")
     args = parser.parse_args()
 
@@ -2140,6 +2224,7 @@ def main() -> None:
                     continue
             except Exception:
                 pass
+        lit_master = Path(args.literature_master) if args.literature_master else None
         report = run_one(
             path,
             reports_dir,
@@ -2160,6 +2245,7 @@ def main() -> None:
             table_m1_msun=table_m1_map.get(str(sid)) if sid else None,
             fit_jitter=args.fit_jitter,
             jitter_kms=args.rv_jitter_kms,
+            literature_master=lit_master,
         )
         if report is None:
             skipped += 1

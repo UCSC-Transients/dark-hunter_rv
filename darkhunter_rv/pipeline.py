@@ -186,8 +186,43 @@ def _mask_ccf_stack_error_inflated(
     return float(max(formal, from_rms, from_mad, from_std, 1e-9))
 
 
-def _weighted_method_rv_from_rows(rows: list[dict], method: str) -> tuple[float, float]:
-    """Error-weighted mean over diagnostics rows for one method (per-chunk or exposure-level)."""
+def _diag_row_for_chunk(rows: list[dict], chunk_key: str, method: str) -> dict:
+    """Return first diagnostics row matching chunk_key + method (empty dict if missing)."""
+    for r in rows:
+        if str(r.get("chunk_key", "")) == str(chunk_key) and str(r.get("method", "")) == str(method):
+            return r
+    return {}
+
+
+def _trust_weight_for_row(
+    row: dict,
+    *,
+    rv_kms: float,
+    robust_mean_kms: float,
+    trust_cfg: dict,
+) -> tuple[float, dict[str, float]]:
+    """Compute trust components for one chunk row."""
+    comps = qc.chunk_trust_components(
+        rv_kms=float(rv_kms),
+        robust_mean_kms=float(robust_mean_kms),
+        telluric_fraction=float(row.get("telluric_fraction", np.nan)),
+        ccf_peak_snr=float(row.get("ccf_peak_snr", np.nan)),
+        ccf_asymmetry=float(row.get("ccf_asymmetry", np.nan)),
+        cfg=trust_cfg,
+    )
+    return float(comps["trust_weight"]), comps
+
+
+def _weighted_method_rv_from_rows(
+    rows: list[dict],
+    method: str,
+    trust_cfg: dict | None = None,
+) -> tuple[float, float]:
+    """Error-weighted mean over diagnostics rows for one method (per-chunk or exposure-level).
+
+    When ``trust_cfg["enabled"]`` is true, scale IVW by residual / telluric / CCF trust.
+    """
+    tw_cfg = dict(qc.DEFAULT_TRUST_WEIGHTS if trust_cfg is None else trust_cfg)
     ck_all_only = method in ("strong_lines",)
     sub: list[dict] = []
     for r in rows:
@@ -219,9 +254,20 @@ def _weighted_method_rv_from_rows(rows: list[dict], method: str) -> tuple[float,
         if not np.all(keep):
             rv = rv[keep]
             er = er[keep]
+            sub = [s for s, k in zip(sub, keep) if k]
         if len(rv) < int(config.MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK):
             return float("nan"), float("nan")
-    w = 1.0 / (er**2 + 1e-18)
+    robust_mu = float(np.median(rv))
+    trusts = np.array(
+        [
+            _trust_weight_for_row(s, rv_kms=float(rvi), robust_mean_kms=robust_mu, trust_cfg=tw_cfg)[0]
+            for s, rvi in zip(sub, rv)
+        ],
+        dtype=float,
+    )
+    w = qc.ivw_weights_with_trust(er, trusts, enabled=bool(tw_cfg.get("enabled", False)))
+    if float(np.sum(w)) <= 0:
+        w = 1.0 / (er**2 + 1e-18)
     mu = float(np.sum(w * rv) / np.sum(w))
     sig = float(np.sqrt(1.0 / np.sum(w)))
     if method == "mask_ccf":
@@ -654,6 +700,18 @@ def process_spectrum(
         use_fft_primary = False
         run_multi = False
     qc_thresholds = qc.load_qc_config(Path(args.qc_config), instrument.name)
+    trust_cfg = qc.load_trust_weights_config(Path(args.qc_config))
+    if bool(getattr(args, "trust_weights", False)):
+        trust_cfg["enabled"] = True
+    if bool(getattr(args, "no_trust_weights", False)):
+        trust_cfg["enabled"] = False
+    if bool(trust_cfg.get("enabled", False)):
+        logger.info(
+            "Trust-weighted IVW stack enabled (residual_scale=%.2f telluric soft/hard=%.2f/%.2f)",
+            float(trust_cfg["residual_scale_kms"]),
+            float(trust_cfg["telluric_soft_max"]),
+            float(trust_cfg["telluric_hard_max"]),
+        )
 
     mask_dir = Path(instrument.mask_directory)
     valid_orders = sorted(o for o in spec_data if o not in instrument.bad_orders)
@@ -1022,6 +1080,8 @@ def process_spectrum(
             )
             diagnostics_rows[-1]["ccf_width"] = w_ccf
             diagnostics_rows[-1]["ccf_asymmetry"] = asym_ccf
+            diagnostics_rows[-1]["telluric_fraction"] = float(tell_frac)
+            diagnostics_rows[-1]["mask_line_count"] = float(mask_line_count)
             diagnostics_rows[-1]["qc_pass"] = qc_ok
             diagnostics_rows[-1]["qc_reason"] = qc_reason
             qc_ok_mask_chunk = bool(qc_ok)
@@ -1146,8 +1206,13 @@ def process_spectrum(
                     "rv_kms": rv_t,
                     "rv_err_kms": err_t,
                     "ccf_peak": np.nan,
+                    "ccf_peak_snr": np.nan,
                     "gauss_ok": False,
                     "template_key": str(tpl_key),
+                    "telluric_fraction": float(tell_frac),
+                    "mask_line_count": float(mask_line_count),
+                    "ccf_width": np.nan,
+                    "ccf_asymmetry": np.nan,
                     "fft_ccf_qc_reason": fft_ccf_qc_reason,
                     "fft_ccf_rss_ratio": fft_ccf_rss_ratio,
                     "qc_pass": tpl_fft_qc_pass,
@@ -1298,7 +1363,20 @@ def process_spectrum(
             mean_rv, mean_err, rms = np.nan, np.nan, np.nan
         else:
             stack_pairs = set(zip(keys_arr.tolist(), meth_arr.tolist()))
-            wts = 1.0 / (err_arr**2 + 1e-9)
+            robust_mu = float(np.median(rv_arr))
+            trust_vals = []
+            for ck_i, meth_i, rv_i in zip(keys_arr.tolist(), meth_arr.tolist(), rv_arr.tolist()):
+                drow = _diag_row_for_chunk(diagnostics_rows, str(ck_i), str(meth_i))
+                tw_i, _comps = _trust_weight_for_row(
+                    drow, rv_kms=float(rv_i), robust_mean_kms=robust_mu, trust_cfg=trust_cfg
+                )
+                trust_vals.append(tw_i)
+            trust_arr = np.asarray(trust_vals, float)
+            wts = qc.ivw_weights_with_trust(
+                err_arr, trust_arr, enabled=bool(trust_cfg.get("enabled", False))
+            )
+            if float(np.sum(wts)) <= 0:
+                wts = 1.0 / (err_arr**2 + 1e-9)
             mean_rv = float(np.average(rv_arr, weights=wts))
             mean_err = float(np.sqrt(1.0 / np.sum(wts)))
             rms = _weighted_rms(rv_arr, err_arr, mu_weighted=mean_rv)
@@ -1607,8 +1685,8 @@ def process_spectrum(
         and hb_fit_balmer is not None
         and plot_root is not None
     ):
-        rv_m_exp, err_m_exp = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf")
-        rv_t_exp, err_t_exp = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft")
+        rv_m_exp, err_m_exp = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf", trust_cfg=trust_cfg)
+        rv_t_exp, err_t_exp = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft", trust_cfg=trust_cfg)
         tpl_k = _dominant_template_key(diagnostics_rows)
         tpl_pair = _bank_entry_for_template_key_str(bank, tpl_k)
         if tpl_pair is not None:
@@ -1638,8 +1716,8 @@ def process_spectrum(
         and (run_multi or use_fft_primary or args.hb_rv_fallback)
         and not wrote_hb_overlay
     ):
-        rv_m_hb, err_m_hb = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf")
-        rv_t_hb, err_t_hb = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft")
+        rv_m_hb, err_m_hb = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf", trust_cfg=trust_cfg)
+        rv_t_hb, err_t_hb = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft", trust_cfg=trust_cfg)
         tpl_leg = "Template FFT"
         if not np.isfinite(rv_t_hb) and hb_order is not None:
             rv_t_hb, err_t_hb = _weighted_template_fft_for_order(diagnostics_rows, int(hb_order))
@@ -1731,6 +1809,12 @@ def process_spectrum(
             if len(rv_arr) > 1
             else (0.0 if len(rv_arr) == 1 else np.nan)
         )
+        robust_for_trust = (
+            float(np.median(rv_arr))
+            if len(rv_arr) > 0
+            else (float(mean_rv) if np.isfinite(mean_rv) else float("nan"))
+        )
+        trust_enabled = bool(trust_cfg.get("enabled", False))
         for row in diagnostics_rows:
             ck = str(row.get("chunk_key", ""))
             meth = str(row.get("method", ""))
@@ -1740,6 +1824,27 @@ def process_spectrum(
             row["chunk_scatter_kms"] = chunk_scatter if np.isfinite(chunk_scatter) else np.nan
             rv_row = row.get("rv_kms", np.nan)
             row["residual_to_exposure_kms"] = float(rv_row - mean_rv) if np.isfinite(rv_row) and np.isfinite(mean_rv) else np.nan
+            _tw, comps = _trust_weight_for_row(
+                row,
+                rv_kms=float(rv_row) if np.isfinite(rv_row) else float("nan"),
+                robust_mean_kms=robust_for_trust,
+                trust_cfg=trust_cfg,
+            )
+            row["trust_residual"] = comps["trust_residual"]
+            row["trust_telluric"] = comps["trust_telluric"]
+            row["trust_ccf"] = comps["trust_ccf"]
+            row["trust_weight"] = comps["trust_weight"]
+            er_row = float(row.get("rv_err_kms", np.nan))
+            if np.isfinite(er_row) and er_row > 0:
+                ivw = float(1.0 / (er_row**2 + 1e-9))
+            else:
+                ivw = float("nan")
+            row["ivw_weight"] = ivw
+            if np.isfinite(ivw):
+                row["stack_weight"] = float(ivw * comps["trust_weight"]) if trust_enabled else float(ivw)
+            else:
+                row["stack_weight"] = float("nan")
+            row["trust_weights_enabled"] = bool(trust_enabled)
 
 
     # Routine adopted-RV match figure (--plots and --plots-focus); no outlier threshold.
@@ -1983,6 +2088,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-chunk-err", type=float, default=50.0, help="Skip chunk RVs with err > this (km/s)")
     parser.add_argument("--qc-config", default="order_chunk_qc.yaml", help="QC threshold YAML")
     parser.add_argument("--write-qc-config", action="store_true", help="Write default QC config if missing")
+    parser.add_argument(
+        "--trust-weights",
+        action="store_true",
+        help="Enable trust-scaled IVW stack (residual/telluric/CCF); overrides order_chunk_qc.yaml trust_weights.enabled",
+    )
+    parser.add_argument(
+        "--no-trust-weights",
+        action="store_true",
+        help="Disable trust-scaled IVW stack even if enabled in QC YAML",
+    )
     parser.add_argument(
         "--mask-only",
         action="store_true",

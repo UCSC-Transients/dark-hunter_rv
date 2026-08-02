@@ -62,11 +62,13 @@
   - Omit `--no-bias` to apply repo [`bias_statistics.txt`](bias_statistics.txt) (match legacy if it was debiased). Add `--no-bias` only for an explicit no-debias comparison.
   - Pipeline flags go **after a lone `--`**.
   - **Multi-star:** use a broad glob (e.g. `Gaia_DR3_*.txt`) and **`--multi-star`**; reports go under `report-dir/<source_id>/`. Optional `--min-epochs 10` and `--write-combined-csv`.
-- **Literature RV cross-check (step 08 lite; El-Badry master vs mask/template):**
-  - `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_cool_vsini12_mhfix/*_diagnostics.csv' --report-dir validation_output/literature_crosscheck_lite --copy-key-table calibration/literature_crosscheck_lite/per_star_bias_rms.csv`
+- **Literature RV cross-check (step 08; El-Badry master vs mask/template + LAMOST/RAVE):**
+  - Lite: `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_blaze_split/*_diagnostics.csv' --report-dir validation_output/literature_crosscheck_lite --copy-key-table calibration/literature_crosscheck_lite/per_star_bias_rms.csv`
+  - Full (LAMOST/RAVE from summaries): `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_blaze_split/*_diagnostics.csv' --summaries-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_summary.txt' --report-dir validation_output/literature_crosscheck_full --copy-key-table calibration/literature_crosscheck_full/per_star_bias_rms.csv`
   - Optional: add `strong_lines` via `--methods mask_ccf,template_fft,strong_lines`.
-  - Outputs (gitignored): `validation_output/literature_crosscheck_lite/{REPORT.md,epoch_pairs.csv,per_star_bias_rms.csv,orbit_qa.csv}`; tracked key table: `calibration/literature_crosscheck_lite/per_star_bias_rms.csv`.
-  - Nearest-BJD join on `gaia_dr3_id`; LAMOST/RAVE deferred to 08-full.
+  - Orbit-plot overlay from master CSV: `python fit_apf_rv_keplerian.py --summary /Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_<id>_summary.txt --literature-master calibration/literature_rv_master.csv`
+  - Outputs (gitignored): `validation_output/literature_crosscheck_full/{REPORT.md,epoch_pairs.csv,per_star_bias_rms.csv,orbit_qa.csv,external_*.csv}`; tracked key tables under `calibration/literature_crosscheck_full/`.
+  - Nearest-BJD join on `gaia_dr3_id` for pipeline↔literature and external↔literature (LAMOST_LRS / LAMOST_MRS / RAVE_DR6 by default).
 - Interpretation plots + text (after diagnose, or on existing CSVs):
   - `env PYTHONPATH=. python3 validation/legacy_interpretation_report.py --report-dir validation_output/diagnose_legacy --pipeline-summary validation_output/pipeline_rerun/Gaia_DR3_<id>_summary.txt --legacy-summary ../output/<id>_summary.txt`
 
@@ -91,3 +93,14 @@
 - If method offsets are coherent with Teff or mask-line count, use those features in post-hoc method trust regions.
 - If error coverage is under-dispersed, increase systematic floor terms per method/instrument/chunk family.
 - For broad-line stars, use the benchmark recommendation from `docs/broad_line_method.md`.
+
+## SB2 search (step 07)
+
+Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit. **Not** fused into pipeline `*_diagnostics.csv` yet.
+
+- Per-star search: `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
+  - Outputs: `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, …), `sb2_orders.csv`, `sb2_report.json`; on detect/`--force-fit`: `sb2_fit.json` + separated spectra.
+- Fit diagnostics: `python -m validation.sb2_fit_diagnostics_report --sb2-dir validation_output/sb2_<id>`
+- Optional SB2 orbit (07c): `python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_<id>` (uses `darkhunter_rv.sb2_rv_fit`; single-lined Keplerian fitter unchanged).
+- Unit tests: `python -m pytest tests/test_sb2.py tests/test_sb2_rv_fit.py tests/test_plot_sb2_decomposition_orders.py -m "not slow"`
+- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag. Cohort fraction vs Gaia NSS SB2 still open.
