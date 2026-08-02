@@ -1,6 +1,6 @@
 # Mask lane deploy record
 
-**Status:** production defaults updated to `subchunks_8` (2026-06).
+**Status:** production defaults updated to `subchunks_8` (2026-06). Committed Jun-16 debias table kept; fresh rebuild deferred pre-final (see policy below).
 
 ## Production config
 
@@ -20,6 +20,12 @@
 - Uniform **subchunks_8** median σ_RV **0.0189 km/s** vs **0.0223** for subchunks_4
 - Adaptive per-order mix ≈ pure s8 (no heterogeneous layout gain)
 - Per-order greedy σ_norm mix **not** deployed (regresses vs uniform s8)
+
+## Debias table policy (2026-08)
+
+**Keep current committed table:** `bias_statistics.txt` is the Jun-16 `subchunks_8` closeout (`a312993`; 364 `order_sub` keys, sub index 0–7). Do **not** rebuild for Phase 0c / thin mask-deploy cards.
+
+**Rebuild deferred until pre-final product** (immediately before final ship). When human approves, use Ziggy block under *Mask debias rebuild* below, then *Refit catalog after bias rebuild*.
 
 ## Mask debias rebuild (`subchunks_8`)
 

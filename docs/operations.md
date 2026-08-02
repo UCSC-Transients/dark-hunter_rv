@@ -128,6 +128,15 @@ Default pipeline uses `--continuum-mode split` with `calibration/blaze_orders_ap
 
 **Template FFT vsini proxy (step 10 / #87):** when broadening is rejected (> `VSINI_PROXY_MAX_KMS`) or non-finite, cool stars (Teff ≤ 6500) use `VSINI_PROXY_REJECTED_GRID_KMS_COOL` / `VSINI_PROXY_NONFINITE_GRID_KMS_COOL` (12 km/s); hot stars keep 75 / 45. HiRes PHOENIX filenames with dash-separated negative `[M/H]` (e.g. `lte07200-3.50-1.0`) restore the minus sign in `_parse_lte_hires_filename`.
 
+**Template method offsets (step 10c / #87):** repo-root `method_rv_offsets.txt` (APF). Mask = truth; pipeline auto-loads when file present (`DARKHUNTER_METHOD_OFFSETS_FILE` overrides). Computed from `validation_output/template_fft_baseline/pipeline_cool_vsini12_mhfix/*_diagnostics.csv` (114 exposures; joint_n=40, estimator=median, σ≤2.5 km/s + method regions):
+
+| instrument | offset_template_fft_kms | offset_strong_lines_kms | joint_n |
+|------------|------------------------:|------------------------:|--------:|
+| APF | −1.04836905 | −2.80269523 | 40 |
+
+Pairwise (not joint-closed): median(mask−template)=−1.2664 (n=109); median(mask−strong)=−2.7783 (n=98). After joint offsets: median(mask−corrected_template)≈0; median(mask−corrected_strong)≈0; median(corrected_template−corrected_strong)=−0.2509 km/s. No separate template `bias_statistics` rebuild in this pass (locked: offsets only). Ziggy full-catalog refit still ops handoff after merge.
+
+
 ## Daily / cron processing
 
 ```bash

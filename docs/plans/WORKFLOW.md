@@ -2,6 +2,8 @@
 
 **Repo-visible step plans:** [steps/](steps/) (mirror of `.cursor/plans/rv-pipeline/steps/` for Markdown preview and GitHub browsing). Update both when a step changes.
 
+**Multi-agent runs:** give the orchestrator agent [ORCHESTRATOR.md](ORCHESTRATOR.md) as the sole entrypoint (links every step, command, and launch card).
+
 GitHub **issues** and **branches** track shared progress.
 
 ## A. Start a step
