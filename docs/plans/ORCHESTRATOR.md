@@ -242,12 +242,12 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
 - [x] **P5** Trust / SB2 / 08-full on main (#99 → #101) — residuals remain (below)
 
-### NEXT (orchestrator — 2026-08-02 post-#105)
+### NEXT (orchestrator — 2026-08-02 post-#106)
 
-1. ~~#103 / #104 / #105~~ **MERGED** (soft residuals through NSS dump `a7f2b8d`).
-2. **Code DoD largely met.** Remaining = human/data gates — see [HUMAN_GATES.md](HUMAN_GATES.md).
-3. Closed issues #40/#41/#42 after stack land; #44/#45/#94 stay open with residual notes.
-4. Do **not** enable default epoch_ccf adopt, trust-on, or ziggy bias rebuild without table answers.
+1. ~~#103–#106~~ soft residuals + HUMAN_GATES **on main**.
+2. **Defaults applied:** no default epoch_ccf adopt; trust stays opt-in; lit waived at n=8; SB2 campaign refit optional.
+3. **Only open RV-pipeline residual:** pre-final bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) / [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39)) — wait for human “go”.
+4. Closed obsolete chunk Phase A–E issues #48–#56; closed #44/#45/#94 under gate defaults.
 
 ### Branch map (historical; stack landed)
 
@@ -256,6 +256,7 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 | 1 | [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) | 2026-08-02 |
 | 2–5 stack | [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96)–[#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) → [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | 2026-08-02 `c6801f7` |
 | Soft residuals | [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)–[#105](https://github.com/UCSC-Transients/dark-hunter_rv/pull/105) | 2026-08-02 |
+| Human gates doc | [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106) | 2026-08-02 |
 
 ### 0.6 Human session policy (2026-08-02)
 
