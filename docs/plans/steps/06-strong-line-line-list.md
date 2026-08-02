@@ -124,5 +124,8 @@ PYTHONPATH=. python -m pytest \
 
 - [x] Master todo `strong-line-line-list` → completed
 - [x] Set this step `status: complete`; INDEX Merged column → 2026-08-02 + #90
-- [ ] Update `three_rv_methods` plan if still open
+- [ ] Update `three_rv_methods` plan if still open (`three_rv_methods_e1b72701.plan.md` still has pending todos)
 - [x] Close #43, #91, #92, #93 (via PR)
+- [x] Post-merge QA (`step/06-post-merge-qa`): `pytest tests/test_strong_lines_product.py tests/test_h_beta_rv.py` → 19 passed, 1 skipped
+- [x] Post-merge QA: `calibration/strong_line_offsets.txt` Q/offset table matches plan calibrated qualities
+- [x] Post-merge QA smoke: archived `*_diagnostics.csv` under `validation_output/` have `method=strong_lines` (legacy `qc_reason=pending` / `pending:Hbeta`; product path now writes `ivw_n=…` in `pipeline.py`)
