@@ -18,14 +18,14 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | **template_fft** | 10 | **Complete** (#88 + 10c offsets `method_rv_offsets.txt`) |
 | **strong_lines** | 06 | **Complete** ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) — Hβ-primary Balmer; metals + Q×SNR² IVW |
 | **epoch_ccf** (relative) | 11 | **in_progress** — spike done (`epoch_ccf.py` + WLS); matrix CLI next ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
-| **fusion / adoption** | 03, 04 | After absolute lanes + prefer after 11 v1 |
+| **fusion / adoption** | 03, 04 | **03 complete** (local `9de6c68`); 04 next |
 
 | Step | Plan | Status | Issue | Branch(es) | Merged |
 |------|------|--------|-------|------------|--------|
 | 00 Literature RV master | [steps/00-literature-rv-master.md](steps/00-literature-rv-master.md) | completed | [#37](https://github.com/astrofoley/dark-hunter_rv/issues/37) | `step/00-literature-rv-master` | 2026-06-07 ([#46](https://github.com/astrofoley/dark-hunter_rv/pull/46)) |
 | 01 Benchmark cool precision | [steps/01-benchmark-cool-precision.md](steps/01-benchmark-cool-precision.md) | **complete** (waivers) | [#38](https://github.com/UCSC-Transients/dark-hunter_rv/issues/38) | `step/01-benchmark-cool-precision`, `step/01-cool-closeout` | local `5c352e4` |
 | 02 Chunk weights / subchunks | [steps/02-chunk-weights-subchunks.md](steps/02-chunk-weights-subchunks.md) | in_progress (02a verified; rebuild deferred pre-final; 02b later) | [#39](https://github.com/astrofoley/dark-hunter_rv/issues/39) | `step/02a-subchunk-study`, `step/02a-bias-defer-verify`, `step/02b-trust-weights-stack` | — |
-| 03 Method fusion / coverage | [steps/03-method-fusion-coverage.md](steps/03-method-fusion-coverage.md) | in_progress | [#40](https://github.com/UCSC-Transients/dark-hunter_rv/issues/40) | `step/03-method-fusion-coverage` | — |
+| 03 Method fusion / coverage | [steps/03-method-fusion-coverage.md](steps/03-method-fusion-coverage.md) | **complete** (local) | [#40](https://github.com/UCSC-Transients/dark-hunter_rv/issues/40) | `step/03-method-fusion-coverage` | local `9de6c68` |
 | 04 Adopted-RV match plots | [steps/04-adopted-rv-match-plots.md](steps/04-adopted-rv-match-plots.md) | pending | [#41](https://github.com/astrofoley/dark-hunter_rv/issues/41) | `step/04-adopted-rv-match-plots` | — |
 | 05 Short-pair QC | [steps/05-short-pair-epoch-ccf.md](steps/05-short-pair-epoch-ccf.md) | pending (05a; 05b → 11) | [#42](https://github.com/astrofoley/dark-hunter_rv/issues/42) | `step/05a-short-pair-calibration` | — |
 | 06 Strong-line line list | [steps/06-strong-line-line-list.md](steps/06-strong-line-line-list.md) | **complete** | [#43](https://github.com/UCSC-Transients/dark-hunter_rv/issues/43), [#91](https://github.com/UCSC-Transients/dark-hunter_rv/issues/91)–[#93](https://github.com/UCSC-Transients/dark-hunter_rv/issues/93) | `step/06-strong-line-teff-sweep` | 2026-08-02 ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) |

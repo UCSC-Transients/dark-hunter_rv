@@ -238,15 +238,15 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done (`18d6cec` on `step/10c-method-offsets`)
 - [x] **P1** Absolute lanes OK for now: mask bias verified (rebuild deferred), template offsets, strong tests+Q (fresh `ivw_n=` diagnostics still optional). Epoch spike done (#94); matrix CLI = Phase 4
 - [x] **P2** 08 lite done (`a6ffe75`, n_stars=4) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
-- [ ] **P3** Fusion merged; adopted plots merged
+- [ ] **P3** Fusion **local done** (`9de6c68`); adopted plots pending
 - [ ] **P4** Step 11 v1 merged; 05a short-pair report uses matrix
 - [ ] **P5** 02b + SB2 (reuse untracked WIP) + 08-full — **do**, not defer
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human:** Phase 1 PRs — **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate. Phase 2 PR when ready (`01-cool-closeout`, `08-external-rv-crosscheck`).
-2. FUSION-03 in flight (`step/03-method-fusion-coverage`) → then PLOTS-04
-3. EPOCH-MATRIX + SHORTPAIR-05A in Phase 4
+1. **Human:** Phase 1 PRs — **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate. Phase 2 PR (`01`, `08-lite`). Phase 3 PR = fusion `9de6c68` (+ plots when ready).
+2. PLOTS-04 in flight → then Phase 4 EPOCH-MATRIX + SHORTPAIR-05A
+3. Phase 5 after P3–P4
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -617,6 +617,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | STRONG-QA | **done** | `767d68b` on `step/06-post-merge-qa` | pytest 19p/1s; Q match; archived smoke lacks `ivw_n=` (code emits) |
 | 2026-08-02 | BENCH-01 | **done** (waivers) | `5c352e4` on `step/01-cool-closeout` | σ_RV north star MET; chunk-scatter/Phase A waived; #38 commented |
 | 2026-08-02 | LIT-08-LITE | **done** | `a6ffe75` on `step/08-external-rv-crosscheck` | n_stars=4; compare_literature_rvs CLI; #45 commented |
+| 2026-08-02 | FUSION-03 | **done** | `9de6c68` on `step/03-method-fusion-coverage` | method_fusion v1 + coverage; 25 tests; #40 commented |
 
 ---
 
