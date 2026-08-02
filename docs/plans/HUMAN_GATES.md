@@ -1,20 +1,27 @@
 # Human decision checklist (post soft-residuals)
 
-Program code lanes for mask / template / strong / fusion / epoch-CCF / SB2 tooling are on `main` through [#105](https://github.com/UCSC-Transients/dark-hunter_rv/pull/105). Remaining items need **human decisions or data**, not more code scaffolding.
+Program code lanes for mask / template / strong / fusion / epoch-CCF / SB2 tooling are on `main` through [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106). Docs closeout: [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107).
 
-| # | Decision | Default if no answer | Notes |
-|---|----------|----------------------|-------|
-| 1 | Enable **`epoch_ccf_*` as default adopted RV**? | **No** (opt-in enrich only) | Issue [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94) |
-| 2 | Enable **trust weights by default** (`order_chunk_qc.yaml`)? | **No** (CLI `--trust-weights` only) | A/B: formal σ rises ~1.6–2.4× ([#104](https://github.com/UCSC-Transients/dark-hunter_rv/pull/104)) |
-| 3 | **Pre-final** `bias_statistics.txt` rebuild + ziggy catalog refit? | Deferred until you say go | §12.1 ziggy alert; issue [#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) |
-| 4 | Lit cross-check **n≥10**: ingest ≥2 missing El-Badry APF spectra, or **waive** at n=8? | Leave [#45](https://github.com/UCSC-Transients/dark-hunter_rv/issues/45) open | 15 master IDs lack local spectra |
-| 5 | SB2 cohort: full **`output/` refit** so `sb2_candidate` populates? | Optional; ziggy or local campaign | NSS dump 147/155 already on main; flag rates need fused diags |
+**Applied defaults (2026-08-02, post-#106 continue):**
+
+| # | Decision | Applied | Issue |
+|---|----------|---------|-------|
+| 1 | `epoch_ccf_*` default adopted RV | **No** (opt-in enrich only) | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94) **closed** |
+| 2 | Trust weights default on | **No** (`--trust-weights` only) | — |
+| 3 | Pre-final bias rebuild + ziggy | **Still deferred** — say go to run | [#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57), [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39) **open** |
+| 4 | Lit n≥10 | **Waived** at n_stars=8 | [#45](https://github.com/UCSC-Transients/dark-hunter_rv/issues/45) **closed** |
+| 5 | Full `output/` SB2 refit for flag rates | **Optional** — not blocking | [#44](https://github.com/UCSC-Transients/dark-hunter_rv/issues/44) **closed** |
+
+## Still needs explicit “go”
+
+1. **Bias rebuild + ziggy catalog refit** (`bash scripts/rebuild_mask_bias.sh` then ziggy `refit_all_per_object_parallel.sh`) — see `calibration/mask_lane_deploy.md` / ORCHESTRATOR §12.1.
+2. Reopen any closed issue above if policy changes (e.g. enable epoch_ccf adopt, expand lit sample).
 
 ## Orchestrator stop condition
 
-Treat the ORCHESTRATOR §9 DoD as **met for code** except items that explicitly require the table above. Soft residuals after #105 are gate-bound.
+ORCHESTRATOR §9 code DoD **met**. Active residual: HUMAN_GATES #3 only.
 
-## Quick verify (no Gaia)
+## Quick verify
 
 ```bash
 cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv

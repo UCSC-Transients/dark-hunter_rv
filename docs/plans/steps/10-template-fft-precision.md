@@ -1,10 +1,12 @@
 ---
 step_id: 10-template-fft-precision
 phase: C
-status: in_progress
+status: complete
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/87
 branches:
   - step/10-template-fft-precision
+  - step/10c-method-offsets
+merged: 2026-08-01 #88; 10c via #95/#101
 depends_on: [01-benchmark-cool-precision]
 blocks: [03-method-fusion-coverage]
 master_todo_id: template-fft-precision

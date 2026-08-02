@@ -1,10 +1,13 @@
 ---
 step_id: 02-chunk-weights-subchunks
 phase: C
-status: in_progress
-github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/39
+status: in_progress  # 02b trust opt-in done; 02a bias rebuild deferred (#57)
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/39
+related_issues:
+  - https://github.com/UCSC-Transients/dark-hunter_rv/issues/57
 branches:
   - step/02a-subchunk-study
+  - step/02a-bias-defer-verify
   - step/02b-trust-weights-stack
 depends_on: [01-benchmark-cool-precision]
 blocks: [10-template-fft-precision]

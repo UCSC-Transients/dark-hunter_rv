@@ -4,9 +4,11 @@
 **Repo root:** `/Users/rfoley/darkhunter/rvs/dark-hunter_rv`  
 **Data root:** `/Users/rfoley/darkhunter/rvs/data`  
 **GitHub:** `UCSC-Transients/dark-hunter_rv`  
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-02
 
 This file is the **single entrypoint**. It links every step plan, command, constraint, and subagent contract. If something is detailed elsewhere, the link is authoritative; if something is only here, treat it as binding.
+
+**Program status:** §9 code DoD **MET** (through [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106)). Gate defaults applied ([HUMAN_GATES.md](HUMAN_GATES.md)). **Only open RV residual:** pre-final bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) / [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39)) — wait for human “go”. Tracker: [INDEX.md](INDEX.md).
 
 **Always-on skills:** orchestrator and every subagent must read and use **strict-workflow** and **caveman** (§0.3) for the whole run.
 
@@ -27,8 +29,8 @@ This file is the **single entrypoint**. It links every step plan, command, const
    - `/Users/rfoley/darkhunter/rvs/dark-hunter_rv/.cursor/skills/strict-workflow/SKILL.md`
    - `/Users/rfoley/darkhunter/rvs/dark-hunter_rv/.cursor/skills/caveman/SKILL.md`  
    Also acceptable mirrors: `.cursor/skills/strict-workflow/SKILL.md`, `.cursor/skills/caveman/SKILL.md` under repo root; user-global copies under `~/.cursor/skills/` if present — **repo copies win** when both exist.
-2. Read this file top-to-bottom once per session; then refresh [INDEX.md](INDEX.md) and live GitHub state.
-3. Launch **only** subagents whose **Start when** gate is true.
+2. Read this file top-to-bottom once per session; then refresh [INDEX.md](INDEX.md), [HUMAN_GATES.md](HUMAN_GATES.md), and live GitHub state.
+3. Launch **only** subagents whose **Start when** gate is true. (Post-DoD: do **not** relaunch Phase 1–5 cards unless human opens new scope.)
 4. Give each subagent a **copy of its launch card** (below) plus the linked step `.md` — do not invent scope. **Every subagent prompt must instruct that agent to read and use the same two skills** (§0.3) before coding or reporting.
 5. After each subagent returns: update checkboxes here / INDEX / step frontmatter; run the listed verification; commit per §0.4.
 6. **Never** merge PRs while CI is red or still running unless the human explicitly overrides.
@@ -63,6 +65,7 @@ Additional rules (also follow):
 | No inline imports | cursor-team-kit `no-inline-imports` |
 | Step workflow (branch/PR/propagation) | [WORKFLOW.md](WORKFLOW.md) |
 | Attack order (science sequencing) | [ATTACK_ORDER.md](ATTACK_ORDER.md) |
+| Human gate defaults / residual | [HUMAN_GATES.md](HUMAN_GATES.md) |
 
 **Note on Plan & Halt:** This orchestrator brief **is** the approved plan for the work listed here. Subagents implementing listed tasks do **not** need to re-plan-and-halt for in-scope work. They **must** halt and ask before expanding scope, retuning frozen continuum, or changing chunk layout.
 
@@ -240,14 +243,15 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P2** 01 + 08 lite on main (#96 → #101)
 - [x] **P3** Fusion + adopted plots on main (#97 → #101)
 - [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
-- [x] **P5** Trust / SB2 / 08-full on main (#99 → #101) — residuals remain (below)
+- [x] **P5** Trust / SB2 / 08-full on main (#99 → #101); soft residuals #103–#105; gates applied
 
-### NEXT (orchestrator — 2026-08-02 post-#105)
+### NEXT (orchestrator — 2026-08-02 post-gates)
 
-1. ~~#103 / #104 / #105~~ **MERGED** (soft residuals through NSS dump `a7f2b8d`).
-2. **Code DoD largely met.** Remaining = human/data gates — see [HUMAN_GATES.md](HUMAN_GATES.md).
-3. Closed issues #40/#41/#42 after stack land; #44/#45/#94 stay open with residual notes.
-4. Do **not** enable default epoch_ccf adopt, trust-on, or ziggy bias rebuild without table answers.
+1. ~~#103–#106~~ soft residuals + HUMAN_GATES **on main**.
+2. **Defaults applied** ([HUMAN_GATES.md](HUMAN_GATES.md)): no default epoch_ccf adopt; trust stays opt-in; lit waived at n=8; SB2 campaign refit optional.
+3. **Only open RV-pipeline residual:** pre-final bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) / [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39)) — wait for human “go” (`calibration/mask_lane_deploy.md`).
+4. Closed obsolete chunk Phase A–E issues #48–#56; closed #44/#45/#94 under gate defaults.
+5. Docs closeout PR: [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107).
 
 ### Branch map (historical; stack landed)
 
@@ -256,6 +260,8 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 | 1 | [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) | 2026-08-02 |
 | 2–5 stack | [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96)–[#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) → [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | 2026-08-02 `c6801f7` |
 | Soft residuals | [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)–[#105](https://github.com/UCSC-Transients/dark-hunter_rv/pull/105) | 2026-08-02 |
+| Human gates doc | [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106) | 2026-08-02 |
+| Gate defaults + INDEX | [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107) | open / this PR |
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -269,7 +275,7 @@ Binding for this orchestrator run (resume-safe):
 | Issue #87 | Leave closed; finish 10c; comment results; mark step 10 complete when verified |
 | Step 11 issue | Create on start (`UCSC-Transients/dark-hunter_rv`) |
 | Agent control | Orchestrator chooses launch/kill/parallel |
-| Run length | Through program DoD including Phase 5 (02b, SB2, 08-full) |
+| Run length | **Complete** through Phase 5 + soft residuals + HUMAN_GATES; residual = bias/ziggy only |
 | Git | `[AI Checkpoint]` local commits only — no PR for checkpoints |
 | PRs | No Phase 0 PR. **PR required per Phase 1–5.** Significant cards also get PRs (multi-PR per card OK if sandboxed). Ask human before push/PR |
 | SB2 | Inventory + **reuse** existing untracked `sb2*` code |
@@ -607,6 +613,20 @@ Orchestrator may stop when **all** are true:
 8. Phase 5 items either done or explicitly deferred with INDEX notes.
 9. [ATTACK_ORDER.md](ATTACK_ORDER.md) / this file checkboxes reflect reality.
 
+### §9 status (2026-08-02)
+
+| # | Criterion | Status |
+|---|-----------|--------|
+| 1 | 06 / 09 / 10 complete; 02a bias kept + rebuild deferred | **met** (02a thin; #57 open for pre-final rebuild) |
+| 2 | 01 waivers | **met** (#38 closed) |
+| 3–4 | 03 + 04 on main | **met** (#97 → #101) |
+| 5–6 | 11 + 05a on main | **met** (11 opt-in enrich; default adopt declined) |
+| 7 | 08 lite / full CLI | **met** (n=8 waived; #45 closed) |
+| 8 | Phase 5 | **met** (trust opt-in; SB2 tooling+NSS; optional full refit) |
+| 9 | Docs / INDEX / HUMAN_GATES | **met** (this closeout) |
+
+**Stop condition:** orchestrator **idle** until human says go on bias+ziggy, or opens a new non-orchestrator lane (#81 / #82 / website).
+
 ---
 
 ## 10. Orchestrator status log (append-only)
@@ -647,16 +667,24 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | NSS fetch | **done** | `phase/soft-residuals-3` | 147/155 NSS two-body; flag rates need refit |
 | 2026-08-02 | #105 merged | **done** | main `a7f2b8d` | code DoD; human gates next |
 | 2026-08-02 | issues | closed #40/#41/#42 | — | #44/#45/#94 remain open |
-| 2026-08-02 | HUMAN_GATES | **PR** | `phase/soft-residuals-4` | decision checklist |
+| 2026-08-02 | HUMAN_GATES | **merged** | main `37ef270` / [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106) | decision checklist |
 | 2026-08-02 | #95–#99 → #101 | **merged to main** | `c6801f7` | Full stack on `main` |
-| 2026-08-02 | docs status | in flight | `docs/post-101-status` | INDEX/ORCHESTRATOR/ATTACK_ORDER post-merge |
-| 2026-08-02 | 11d wiring | **done** (local) | `f14f0a5` on `step/11d-product-wiring` | enrich hook + fusion docs; default-adopt still human |
+| 2026-08-02 | 11d wiring | **done** | via #103 | enrich hook; default-adopt declined post-gates |
+| 2026-08-02 | gate defaults | **applied** | [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107) | closed #44/#45/#94/#48–#56; INDEX program closeout |
+| 2026-08-02 | §9 DoD | **MET** | — | idle except bias+ziggy human go |
 
 ---
 
 ## 11. Quick “what do I launch next?” decision tree
 
 ```text
+Program DoD met (§9)?
+  YES → idle. Only launch:
+        • MASK-DEPLOY full rebuild + ziggy IF human says go (#57 / HUMAN_GATES #3)
+        • New scope IF human names it (#81 telluric ZP, #82 instruments, website, …)
+  NO  → (historical path below; do not re-run closed cards)
+
+--- historical (Phases 0–5; keep for archaeology) ---
 Is #90 merged?
   YES → STRONG-QA + MASK-DEPLOY + TEMPLATE-OFFSETS + EPOCH-SPIKE (parallel)
   NO / CI running → do not merge; launch EPOCH-SPIKE and/or MASK-DEPLOY and/or TEMPLATE-OFFSETS only
