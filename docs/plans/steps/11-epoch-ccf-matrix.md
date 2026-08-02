@@ -79,28 +79,28 @@ A_i^{\mathrm{obs}} = v_i + \eta_i, \quad \mathrm{Var}(\eta_i) = \sigma_{A,i}^2
 
 ### 11a — Pairwise CCF engine
 
-- [ ] API: `epoch_pair_ccf(spec_i, spec_j) → {dv_kms, err_kms, peak, width, qc}`
-- [ ] Shared wavelength prep (orders used, telluric mask, continuum)
-- [ ] Auto-correlation path + diagonal QC flags
-- [ ] Unit tests: synthetic Doppler shift recovery; antisymmetric \(\Delta v_{ji}\)
+- [x] API: `epoch_pair_ccf(spec_i, spec_j) → {dv_kms, err_kms, peak, width, qc}`
+- [x] Shared wavelength prep (orders used, telluric mask, continuum)
+- [x] Auto-correlation path + diagonal QC flags
+- [x] Unit tests: synthetic Doppler shift recovery; antisymmetric \(\Delta v_{ji}\)
 
 ### 11b — Matrix builder
 
-- [ ] For one Gaia ID: compute \(i \le j\) pairs (parallelizable)
-- [ ] Persist `epoch_ccf_matrix.npz` / CSV (long form: i, j, dv, err, qc)
-- [ ] CLI: `validation/epoch_ccf_matrix.py --gaia-id ...`
+- [x] For one Gaia ID: compute \(i \le j\) pairs (parallelizable)
+- [x] Persist `epoch_ccf_matrix.npz` / CSV (long form: i, j, dv, err, qc)
+- [x] CLI: `validation/epoch_ccf_matrix.py --gaia-id ...`
 
 ### 11c — Absolute + relative combiner
 
-- [ ] Load abs RVs from diagnostics / summary / fusion columns
-- [ ] WLS (or GLS) fill; output \(\hat{A}_i\), \(\sigma_i\), `n_abs_anchors`, `float_zeropoint`
-- [ ] Tests: one absolute + known relatives → recovers all; zero absolute → relatives only
+- [x] Load abs RVs from diagnostics / summary / fusion columns
+- [x] WLS (or GLS) fill; output \(\hat{A}_i\), \(\sigma_i\), `n_abs_anchors`, `float_zeropoint`
+- [x] Tests: one absolute + known relatives → recovers all; zero absolute → relatives only
 
 ### 11d — Product wiring
 
-- [ ] Optional pipeline / post-process rows: `epoch_ccf_rel`, `epoch_ccf_abs_fill`
+- [x] Optional pipeline / post-process rows: `epoch_ccf_rel`, `epoch_ccf_abs_fill` (matrix CLI CSV columns; **not** default adopted RV)
 - [ ] Document interaction with step 03 fusion (epoch fill as prior or post-fusion salvage)
-- [ ] Playbook recipe for low-S/N multi-epoch stars
+- [x] Playbook recipe for low-S/N multi-epoch stars
 
 ## Parallel subagent split
 

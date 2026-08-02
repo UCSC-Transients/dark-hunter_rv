@@ -58,6 +58,29 @@ Quick reference only:
 python -m validation.setup_calibration
 ```
 
+
+## Short-pair QC (relative / absolute calibration)
+
+Closely spaced epochs (|Δt| < 1 day by default) should show ΔRV ≈ 0 for absolute methods and for the epoch–epoch CCF matrix. Run after multi-epoch diagnostics exist (and preferably after step-11 matrix products for at least a demo star):
+
+```bash
+cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv/.worktrees/shortpair-05a
+PYTHONPATH=. python -m validation.find_short_pairs \
+  --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_epoch_*_diagnostics.csv' \
+  --data-root /Users/rfoley/darkhunter/rvs/data \
+  --epoch-ccf-root /Users/rfoley/darkhunter/rvs/dark-hunter_rv/.worktrees/epoch-matrix/validation_output/epoch_ccf \
+  --out-dir validation_output/short_pair_qc \
+  --max-delta-days 1
+```
+
+Apply the recommended factor when rebuilding matrices:
+
+```bash
+PYTHONPATH=. python -m validation.epoch_ccf_matrix ... --sigma-ij-scale <recommended>
+```
+
+See `docs/validation_playbook.md` and `validation_output/short_pair_qc/SHORT_PAIR_QC.md`.
+
 ## Production batch (skip offset-training spectra)
 
 After calibration, process the full survey list but **skip** spectra that were already run in the offset phase (if their `*_diagnostics.csv` exists), limiting repeat Gaia work:

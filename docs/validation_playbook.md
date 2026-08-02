@@ -20,6 +20,15 @@
 - Cool high-S/N mask precision (step 01; 0.1 km/s goal):
   - `python -m validation.benchmark_cool_precision --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/benchmark_cool_precision`
   - **0.1 km/s interpretation:** north star is single-epoch calibrated mask **σ_RV** (`subchunks_8` campaign median **0.0189 km/s** — met). Also track Phase A APF–APF relative gate (median still ~0.3 km/s on overlap). `chunk_scatter_kms` from the cool benchmark is a raw pre-stack diagnostic (typically ≫ 0.1) and is **not** the epoch-precision pass/fail. Mask lane deploy: `calibration/mask_lane_deploy.md`.
+- **Short-pair QC** (step 05a; Δt≈0 absolute + epoch-CCF scatter / σ_ij inflation):
+  - `PYTHONPATH=. python -m validation.find_short_pairs --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_epoch_*_diagnostics.csv' --data-root /Users/rfoley/darkhunter/rvs/data --epoch-ccf-root validation_output/epoch_ccf --out-dir validation_output/short_pair_qc --max-delta-days 1`
+  - Optional `--same-calendar-night`; `--compute-epoch-ccf` when step-11 pairs CSV missing; `--abs-violation-kms` / `--n-sigma` for flags.
+  - Artifacts: `validation_output/short_pair_qc/short_pairs.csv`, `SHORT_PAIR_QC.md`, `short_pair_sigma_scale.json`; tracked summary `calibration/short_pair_sigma_scale.json` (+ `.csv`).
+  - Feed recommended scale into matrix: `--sigma-ij-scale` on `validation.epoch_ccf_matrix` (or `inflate_sigma_ij`).
+- **Epoch–epoch CCF matrix** (step 11; relative RVs + optional abs fill; **not** default adopted RV):
+  - `PYTHONPATH=. python -m validation.epoch_ccf_matrix --gaia-id <id> --data-root /Users/rfoley/darkhunter/rvs/data --abs-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' --out-dir validation_output/epoch_ccf/<id>`
+  - Artifacts: `epoch_ccf_pairs.csv`, `epoch_ccf_matrix.npz`, `epoch_ccf_abs_fill.csv` (`epoch_ccf_rel` / `epoch_ccf_abs_fill` columns), `epoch_ccf_meta.json`. Diagonal auto-corr should be ~0; when abs anchors exist, see `epoch_ccf_vs_abs_delta.csv`.
+  - Low-S/N salvage: run without requiring every epoch to have mask/template; pairs vs a high-S/N epoch still fill via WLS when ≥1 abs anchor (or relative-only if none).
 - **Phase A baseline** (overlap inventory + calibration gates; regression vs `calibration/phase_a_baseline/reference_manifest.json`):
   - `python -m validation.rv_phase_a_baseline --master calibration/literature_rv_master.csv --summary-dir output --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/rv_phase_a_baseline`
   - Absolute gate (APF vs literature, |ΔRV| < 1 km/s): use `--no-bias-correction-applied` after a `--no-bias` pipeline rerun on overlap stars.

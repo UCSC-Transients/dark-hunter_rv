@@ -88,3 +88,7 @@ Same tool as legacy outliers: ``python -m validation.plot_legacy_outlier_orders`
 
 `tests/test_method_evaluation.py` covers stack rules, QC on single-row methods, adoption ordering, and the S/N median helper.
 `tests/test_method_fusion.py` covers tiered policy, bias/σ inflation, discordance reject, and coverage denominators.
+
+## Epoch–epoch CCF (relative / fill; not adopted)
+
+Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matrix`) and optional WLS abs fill columns `epoch_ccf_rel` / `epoch_ccf_abs_fill`. These are **not** part of the adopted-RV cascade above; fusion (step 03) may consume fills later.
