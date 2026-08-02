@@ -235,7 +235,7 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P0a** PR #90 CI green + merged; step 06 → complete; INDEX updated
 - [ ] **P0b** Plan commits held local (`docs/orchestrator-post-90`); land in **first Phase 1+ PR** (no separate Phase 0 PR)
 - [~] **P0c** Keep committed Jun-16 `bias_statistics.txt` (s8). **Fresh rebuild deferred to pre-final product.** Ziggy: alert human only (see §12.1)
-- [ ] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done; step 10 → complete when accepted
+- [x] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done (`18d6cec` on `step/10c-method-offsets`)
 - [ ] **P1** Three absolute lanes meet exit criteria (§4)
 - [ ] **P2** 08 lite report + 01 cool-precision closeout
 - [ ] **P3** Fusion merged; adopted plots merged
@@ -606,6 +606,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | (launch) | 4 cards parallel (wt) | — | STRONG-QA, MASK-DEPLOY(thin), TEMPLATE-OFFSETS, EPOCH-SPIKE |
 | 2026-08-02 | MASK-DEPLOY | **done** (thin) | `5fd36fa` on `step/02a-bias-defer-verify` | Jun-16 bias verified (364 keys); rebuild deferred; ziggy §12.1 |
 | 2026-08-02 | EPOCH-SPIKE | **done** | `dbe7e8d` on `step/11-epoch-ccf-matrix` | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94); pytest 5/5; matrix CLI = later card |
+| 2026-08-02 | TEMPLATE-OFFSETS | **done** | `18d6cec` on `step/10c-method-offsets` | APF tmpl −1.048 / strong −2.803; #87 commented; step 10 → complete |
 
 ---
 
