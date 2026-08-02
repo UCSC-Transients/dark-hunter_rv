@@ -76,14 +76,19 @@ def exposure_method_flags(rows: list[dict]) -> dict[str, Any]:
     (includes min chunk count and QC filtering for mask/template).
 
     ``strong_lines`` is the Voigt+Lorentz centroid row (currently Hβ only).
+
+    ``epoch_ccf_abs_fill`` is the abs-anchored WLS fill row (``chunk_key=all``) when present;
+    relative-only fills are not valid for adoption.
     """
     rv_m, er_m = _weighted_method_rv_from_rows(rows, "mask_ccf")
     rv_t, er_t = _weighted_method_rv_from_rows(rows, "template_fft")
     rv_sl, er_sl = _rv_err_from_all_row(rows, "strong_lines")
+    rv_ec, er_ec = _rv_err_from_all_row(rows, "epoch_ccf_abs_fill")
 
     mask_valid = np.isfinite(rv_m) and np.isfinite(er_m) and er_m > 0
     tpl_valid = np.isfinite(rv_t) and np.isfinite(er_t) and er_t > 0
     sl_valid = np.isfinite(rv_sl) and np.isfinite(er_sl)
+    ec_valid = np.isfinite(rv_ec) and np.isfinite(er_ec) and er_ec > 0
 
     n_ok = int(mask_valid) + int(tpl_valid) + int(sl_valid)
 
@@ -94,6 +99,7 @@ def exposure_method_flags(rows: list[dict]) -> dict[str, Any]:
         "mask_valid": mask_valid,
         "template_valid": tpl_valid,
         "strong_lines_valid": sl_valid,
+        "epoch_ccf_abs_fill_valid": ec_valid,
         "n_methods_valid": n_ok,
         "overlap_2plus": n_ok >= 2,
         "mask_rv_kms": rv_m,
@@ -102,6 +108,8 @@ def exposure_method_flags(rows: list[dict]) -> dict[str, Any]:
         "template_err_kms": er_t,
         "strong_lines_rv_kms": rv_sl,
         "strong_lines_err_kms": er_sl,
+        "epoch_ccf_abs_fill_rv_kms": rv_ec,
+        "epoch_ccf_abs_fill_err_kms": er_ec,
     }
 
 
@@ -113,6 +121,7 @@ def flags_with_method_offsets(
     Shallow copy of ``flags`` with template/strong RVs shifted by calibration offsets (mask = truth).
 
     ``instrument_row`` is one entry from :func:`darkhunter_rv.io_utils.read_method_rv_offsets`.
+    Epoch-CCF fills are not shifted (already on the absolute scale of the anchors).
     """
     out = dict(flags)
     if not instrument_row:
@@ -141,13 +150,16 @@ def recommend_adopted_rv(
     max_sigma_kms: float | None = None,
 ) -> dict[str, Any]:
     """
-    Cascade adoption: mask_ccf → template_fft → strong_lines (stellar mask preferred).
+    Cascade adoption: mask_ccf → template_fft → strong_lines → epoch_ccf_abs_fill.
 
-    For each method in order, require **region applicability** (``config.METHOD_REGION_*`` +
-    :mod:`darkhunter_rv.method_regions`) and stack **validity** (finite RV/σ, QC rules in
-    :func:`exposure_method_flags`). Use the first method with σ ≤ ``max_sigma_kms`` (default
-    ``config.ADOPTED_CASCADE_MAX_SIGMA_KMS``). If none meet the σ cut, use the first applicable
-    valid method in order and keep its (possibly large) σ.
+    For each of the first three methods, require **region applicability**
+    (``config.METHOD_REGION_*`` + :mod:`darkhunter_rv.method_regions`) and stack
+    **validity**. ``epoch_ccf_abs_fill`` has no Teff/S/N region gate: it is valid
+    when an abs-anchored fill row is present (not relative-only).
+
+    Use the first method with σ ≤ ``max_sigma_kms`` (default
+    ``config.ADOPTED_CASCADE_MAX_SIGMA_KMS``). If none meet the σ cut, use the first
+    applicable valid method in order and keep its (possibly large) σ.
 
     Pass ``teff`` (K) and ``log10_median_mask_ccf_peak_snr`` when known (pipeline and overlap
     reports). If omitted, log10 S/N is taken from ``flags``; ``teff`` defaults to NaN (regions
@@ -170,6 +182,8 @@ def recommend_adopted_rv(
     reg_m = bool(region_mask_applicable(t_arr, s_arr)[0])
     reg_t = bool(region_template_applicable(t_arr, s_arr)[0])
     reg_sl = bool(region_strong_lines_applicable(t_arr, s_arr)[0])
+    # Epoch-CCF fill: always region-applicable when the fill product is valid.
+    reg_ec = True
 
     steps: list[tuple[str, bool, bool, str, str]] = [
         ("mask_ccf", reg_m, bool(flags.get("mask_valid")), "mask_rv_kms", "mask_err_kms"),
@@ -186,6 +200,13 @@ def recommend_adopted_rv(
             bool(flags.get("strong_lines_valid")),
             "strong_lines_rv_kms",
             "strong_lines_err_kms",
+        ),
+        (
+            "epoch_ccf_abs_fill",
+            reg_ec,
+            bool(flags.get("epoch_ccf_abs_fill_valid")),
+            "epoch_ccf_abs_fill_rv_kms",
+            "epoch_ccf_abs_fill_err_kms",
         ),
     ]
 

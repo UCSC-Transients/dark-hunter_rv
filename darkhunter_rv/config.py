@@ -158,7 +158,7 @@ else:
     _slo = REPO_ROOT / "calibration" / "strong_line_offsets.txt"
     STRONG_LINE_OFFSETS_FILE = _slo if _slo.is_file() else None
 
-# Adopted exposure RV cascade (mask → template → strong): prefer first method that is
+# Adopted exposure RV cascade (mask → template → strong → epoch_ccf_abs_fill): prefer first method that is
 # region-applicable, valid, and has σ ≤ this (km/s). If none meet σ, use first applicable valid
 # method in order (report its σ, possibly large). See ``method_evaluation.recommend_adopted_rv``.
 ADOPTED_CASCADE_MAX_SIGMA_KMS = float(
@@ -215,7 +215,7 @@ MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK = 3
 # Below this, return NaN from inverse-variance aggregation (same idea as template_fft).
 MIN_MASK_CCF_CHUNKS_FOR_STACK = 5
 
-# Trust-weighted IVW (step 02b): defaults live in order_chunk_qc.yaml ``trust_weights`` (enabled: false).
+# Trust-weighted IVW (step 02b): defaults live in order_chunk_qc.yaml ``trust_weights`` (enabled: true).
 # CLI: --trust-weights / --no-trust-weights. Scales 1/σ² by residual-vs-robust-mean × telluric × CCF quality.
 
 # Mask CCF Gaussian: reject fits narrower than this (noise spikes); widen lag if peak sits near grid edge.
@@ -228,7 +228,7 @@ MASK_CCF_MAX_LAG_CAP = 700
 # Per-chunk primary stack (used for plots / legacy ``--no-run-all-methods``): cool stars use mask CCF
 # chunks; hot stars (Teff > HOT_STAR_TEFF_THRESHOLD) use template FFT chunks. With **default**
 # multi-method diagnostics, exposure-level **adopted** RV follows ``method_evaluation.recommend_adopted_rv``
-# (mask → template → strong_lines cascade with METHOD_REGION_* and ADOPTED_CASCADE_MAX_SIGMA_KMS).
+# (mask → template → strong_lines → epoch_ccf_abs_fill cascade with METHOD_REGION_* and ADOPTED_CASCADE_MAX_SIGMA_KMS).
 # Legacy ``--no-run-all-methods``: adopted RV uses the hot/cool chunk stack + strong_lines centroid on hot
 # stars; optional ``--hb-rv-fallback`` uses Hβ bundle ``rv_best_kms`` when the stack is unusable (and after
 # cascade NaN when multi-method is on).
@@ -236,7 +236,7 @@ MASK_CCF_MAX_LAG_CAP = 700
 # (``FFT_COARSE_TOP_K``, ``FFT_TWO_PHASE_MIN_TEMPLATES``); disable with ``--no-fft-two-phase``.
 RV_METHOD_SELECTION_NOTES = (
     "Default: multi-method diagnostics (mask_ccf, template_fft, strong_lines Voigt+Lorentz Hβ). "
-    "Adopted exposure RV: cascade mask → template → strong using METHOD_REGION_* and "
+    "Adopted exposure RV: cascade mask → template → strong → epoch_ccf_abs_fill using METHOD_REGION_* and "
     "ADOPTED_CASCADE_MAX_SIGMA_KMS; optional method_rv_offsets.txt shifts template/strong vs mask truth. "
     "Legacy --no-run-all-methods: cool → mask chunk stack; hot → template chunks then strong_lines centroid; "
     "--hb-rv-fallback for Hβ bundle best RV when needed. "

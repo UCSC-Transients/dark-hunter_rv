@@ -1756,6 +1756,51 @@ def process_spectrum(
     if run_multi and diagnostics_rows:
         from . import method_evaluation as me
 
+        fill_arg = getattr(args, "epoch_ccf_fill_csv", None)
+        if fill_arg:
+            fill_path = Path(fill_arg)
+            if fill_path.is_file():
+                ep_m = re.search(r"_epoch_(\d+)", stem)
+                if ep_m is not None:
+                    want_ep = int(ep_m.group(1))
+                    try:
+                        fill_df = pd.read_csv(fill_path)
+                        if "epoch" in fill_df.columns:
+                            hit = fill_df.loc[fill_df["epoch"].astype(int) == want_ep]
+                            if not hit.empty:
+                                row = hit.iloc[0]
+                                rel_only = bool(row["relative_only"]) if "relative_only" in row.index else True
+                                abs_fill = (
+                                    float(row["epoch_ccf_abs_fill"])
+                                    if "epoch_ccf_abs_fill" in row.index
+                                    else float("nan")
+                                )
+                                sig = float(row["sigma_kms"]) if "sigma_kms" in row.index else float("nan")
+                                if (not rel_only) and np.isfinite(abs_fill) and np.isfinite(sig) and sig > 0:
+                                    diagnostics_rows.append(
+                                        {
+                                            "method": "epoch_ccf_abs_fill",
+                                            "chunk_key": "all",
+                                            "rv_kms": abs_fill,
+                                            "rv_err_kms": sig,
+                                            "exposure_rv_kms": abs_fill,
+                                            "exposure_rv_err_kms": sig,
+                                            "qc_pass": True,
+                                            "qc_reason": "epoch_ccf_abs_fill",
+                                        }
+                                    )
+                                    logger.info(
+                                        "Attached epoch_ccf_abs_fill=%.3f+/-%.3f from %s (epoch %d)",
+                                        abs_fill,
+                                        sig,
+                                        fill_path,
+                                        want_ep,
+                                    )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        logger.warning("Could not load epoch CCF fill %s: %s", fill_path, exc)
+            else:
+                logger.warning("epoch-ccf-fill-csv not found: %s", fill_path)
+
         fl = me.exposure_method_flags(diagnostics_rows)
         mo_arg = getattr(args, "method_offsets_file", None)
         mo_path = Path(mo_arg) if mo_arg is not None else None
@@ -2124,12 +2169,22 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--trust-weights",
         action="store_true",
-        help="Enable trust-scaled IVW stack (residual/telluric/CCF); overrides order_chunk_qc.yaml trust_weights.enabled",
+        help="Force-enable trust-scaled IVW stack (residual/telluric/CCF); default is on via order_chunk_qc.yaml",
     )
     parser.add_argument(
         "--no-trust-weights",
         action="store_true",
-        help="Disable trust-scaled IVW stack even if enabled in QC YAML",
+        help="Disable trust-scaled IVW stack (overrides YAML default enabled: true)",
+    )
+    parser.add_argument(
+        "--epoch-ccf-fill-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Optional epoch_ccf_abs_fill.csv from validation.epoch_ccf_matrix; "
+            "attaches abs-anchored fill for this spectrum's epoch so cascade can "
+            "adopt epoch_ccf_abs_fill after strong_lines"
+        ),
     )
     parser.add_argument(
         "--mask-only",

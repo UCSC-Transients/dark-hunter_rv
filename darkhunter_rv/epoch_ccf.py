@@ -316,6 +316,80 @@ def inflate_sigma_ij(
     return sig
 
 
+def abs_rel_delta_discordant(
+    dv_ccf_kms: float,
+    dv_abs_kms: float,
+    *,
+    err_ccf_kms: float = float("nan"),
+    err_abs_i_kms: float = float("nan"),
+    err_abs_j_kms: float = float("nan"),
+    n_sigma: float = 3.0,
+) -> dict[str, float | bool]:
+    """
+    Flag when absolute-method ΔRV disagrees with epoch–epoch CCF ΔRV.
+
+    Residual ``r = dv_ccf - dv_abs``. Combined σ uses CCF pair error plus
+    absolute epoch errors in quadrature when finite::
+
+        σ = sqrt(err_ccf² + err_abs_i² + err_abs_j²)
+
+    Discordant when ``|r| > n_sigma * σ`` and σ is finite and positive.
+    If σ cannot be formed, falls back to ``|r| > n_sigma`` km/s (1 km/s unit
+    scale) only when ``n_sigma`` is used as a hard km/s cut is undesirable —
+    instead: if no σ, return discordant=False and finite residual for triage.
+
+    Parameters
+    ----------
+    dv_ccf_kms
+        Relative CCF ``v_i - v_j``.
+    dv_abs_kms
+        Absolute difference ``A_i - A_j``.
+    err_ccf_kms, err_abs_i_kms, err_abs_j_kms
+        Formal uncertainties (km/s); non-finite ignored.
+    n_sigma
+        Threshold multiplier (default 3).
+
+    Returns
+    -------
+    dict
+        ``residual_kms``, ``sigma_combined_kms``, ``n_sigma_residual``,
+        ``discordant`` (bool). Does **not** change adopted RV — flag only.
+
+    Limitations
+    -----------
+    Linear single-star assumption; SB2 / activity can legitimately fail this gate.
+    """
+    r = float(dv_ccf_kms) - float(dv_abs_kms)
+    if not np.isfinite(r):
+        return {
+            "residual_kms": float("nan"),
+            "sigma_combined_kms": float("nan"),
+            "n_sigma_residual": float("nan"),
+            "discordant": False,
+        }
+    parts: list[float] = []
+    for e in (err_ccf_kms, err_abs_i_kms, err_abs_j_kms):
+        ef = float(e)
+        if np.isfinite(ef) and ef > 0:
+            parts.append(ef * ef)
+    if not parts:
+        return {
+            "residual_kms": r,
+            "sigma_combined_kms": float("nan"),
+            "n_sigma_residual": float("nan"),
+            "discordant": False,
+        }
+    sig = float(np.sqrt(sum(parts)))
+    n_res = abs(r) / sig if sig > 0 else float("nan")
+    disc = bool(np.isfinite(n_res) and n_res > float(n_sigma))
+    return {
+        "residual_kms": r,
+        "sigma_combined_kms": sig,
+        "n_sigma_residual": float(n_res) if np.isfinite(n_res) else float("nan"),
+        "discordant": disc,
+    }
+
+
 def combine_relative_and_absolute(
     dv_ij: np.ndarray,
     sigma_ij: np.ndarray,

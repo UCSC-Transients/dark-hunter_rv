@@ -8,7 +8,7 @@
 
 This file is the **single entrypoint**. It links every step plan, command, constraint, and subagent contract. If something is detailed elsewhere, the link is authoritative; if something is only here, treat it as binding.
 
-**Program status:** §9 code DoD **MET** (through [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106)). Gate defaults applied ([HUMAN_GATES.md](HUMAN_GATES.md)). **Only open RV residual:** pre-final bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) / [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39)) — wait for human “go”. Tracker: [INDEX.md](INDEX.md).
+**Program status:** Gate flips in flight — trust **default on**; cascade includes `epoch_ccf_abs_fill` after strong_lines; always-run multi-epoch CCF + discord flags ([HUMAN_GATES.md](HUMAN_GATES.md)). Residual: bias+ziggy (#57/#39). Tracker: [INDEX.md](INDEX.md).
 
 **Always-on skills:** orchestrator and every subagent must read and use **strict-workflow** and **caveman** (§0.3) for the whole run.
 
@@ -245,13 +245,12 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
 - [x] **P5** Trust / SB2 / 08-full on main (#99 → #101); soft residuals #103–#105; gates applied
 
-### NEXT (orchestrator — 2026-08-02 post-gates)
+### NEXT (orchestrator — 2026-08-02 gate flips)
 
-1. ~~#103–#106~~ soft residuals + HUMAN_GATES **on main**.
-2. **Defaults applied** ([HUMAN_GATES.md](HUMAN_GATES.md)): no default epoch_ccf adopt; trust stays opt-in; lit waived at n=8; SB2 campaign refit optional.
-3. **Only open RV-pipeline residual:** pre-final bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57) / [#39](https://github.com/UCSC-Transients/dark-hunter_rv/issues/39)) — wait for human “go” (`calibration/mask_lane_deploy.md`).
-4. Closed obsolete chunk Phase A–E issues #48–#56; closed #44/#45/#94 under gate defaults.
-5. Docs closeout PR: [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107).
+1. ~~#103–#107~~ soft residuals + docs closeout on main.
+2. **Gate flips (this PR):** trust weights **default on**; cascade `… → strong_lines → epoch_ccf_abs_fill`; always-run multi-epoch CCF + abs/rel discord flags — see [HUMAN_GATES.md](HUMAN_GATES.md).
+3. Still deferred: bias+ziggy (#57/#39); lit n≥10 (wait for spectra); SB2 flag metric then refit.
+4. Campaign: `python -m validation.run_epoch_ccf_multi_epoch` after absolute diagnostics exist.
 
 ### Branch map (historical; stack landed)
 
