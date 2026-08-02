@@ -40,12 +40,28 @@ Optional **method offsets** (`method_rv_offsets.txt`): add calibrated shifts to 
 
 **Note:** regions use mask CCF S/N; a cheaper S/N-only proxy for early gating is future work (methods still run in v1).
 
+## Fusion / adoption v2 (opt-in)
+
+Implemented in `darkhunter_rv.method_fusion` (no ML scorer). Keeps raw per-method RVs unchanged and emits calibrated columns:
+
+| Output | Meaning |
+|--------|---------|
+| `*_rv_calibrated_kms` | raw − Δ_m(Teff) bias surface (constant or Teff knots) |
+| `sigma_eff_kms` | √(σ² + floor² + (k·inter_method_spread)²) for adopted method |
+| `adopted_method_v2` | tiered pick: hot Teff → template→strong→mask; else mask if S/N≥min, else template→strong→mask |
+| `rv_accepted` / `reject_reason` | gates: `no_valid_method`, `discordance` when |RV_a−RV_b| > max(η, c·min(σ_a,σ_b)) |
+
+Enable on reports with `--with-fusion` (diagnostics and overlap). Default pipeline cascade (`recommend_adopted_rv`) stays v1 until explicitly switched.
+
+**Coverage vs reliability:** `python -m validation.rv_method_diagnostics_report` always writes `binned_method_coverage_vs_teff.csv` with **N_total** (finite Teff in bin) vs **N_finite** / `frac_finite` per method — distinct from `binned_high_err_fraction_vs_teff.csv` (frac_bad among finite stacks only).
+
+
 ## Reports and CLI
 
 | Artifact | Producer |
 |----------|----------|
-| `method_comparison_per_exposure.csv`, Teff residual plots | `python -m validation.rv_method_diagnostics_report` |
-| `overlap_enriched_per_exposure.csv`, binned CSVs, overlap histogram, residual vs log₁₀(S/N) | `python -m validation.rv_method_overlap_report` |
+| `method_comparison_per_exposure.csv`, Teff residual plots, `binned_method_coverage_vs_teff.csv`, optional fusion cols (`--with-fusion`) | `python -m validation.rv_method_diagnostics_report` |
+| `overlap_enriched_per_exposure.csv`, binned CSVs, overlap histogram, residual vs log₁₀(S/N); optional fusion cols (`--with-fusion`) | `python -m validation.rv_method_overlap_report` |
 
 Overlap report arguments:
 
@@ -71,3 +87,8 @@ Same tool as legacy outliers: ``python -m validation.plot_legacy_outlier_orders`
 ## Tests
 
 `tests/test_method_evaluation.py` covers stack rules, QC on single-row methods, adoption ordering, and the S/N median helper.
+`tests/test_method_fusion.py` covers tiered policy, bias/σ inflation, discordance reject, and coverage denominators.
+
+## Epoch–epoch CCF (relative / fill; not adopted)
+
+Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matrix`) and optional WLS abs fill columns `epoch_ccf_rel` / `epoch_ccf_abs_fill`. These are **not** part of the adopted-RV cascade above; fusion (step 03) may consume fills later.

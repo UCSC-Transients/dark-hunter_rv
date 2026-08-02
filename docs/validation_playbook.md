@@ -9,6 +9,7 @@
 
 ## Commands
 
+- **Adopted-RV match plot** (step 04): with `--plots` or `--plots-focus`, pipeline writes `{stem}_adopted_rv_match.png` — continuum-normalized orders, stellar mask + strong-line markers at debiased adopted RV (prefers fusion `rv_calibrated_kms` when accepted; else cascade).
 - **Full calibration (bias + method offsets + manifest):** `python -m validation.run_calibration_setup` (see [operations.md](operations.md)).
 - Build bias set only:
   - `python3 validation/build_bias_set.py --input-dir output --out-dir validation_output/bias`
@@ -18,6 +19,16 @@
   - `python3 validation/benchmark_broad_lines.py --out-dir validation_output/broad_line`
 - Cool high-S/N mask precision (step 01; 0.1 km/s goal):
   - `python -m validation.benchmark_cool_precision --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/benchmark_cool_precision`
+  - **0.1 km/s interpretation:** north star is single-epoch calibrated mask **σ_RV** (`subchunks_8` campaign median **0.0189 km/s** — met). Also track Phase A APF–APF relative gate (median still ~0.3 km/s on overlap). `chunk_scatter_kms` from the cool benchmark is a raw pre-stack diagnostic (typically ≫ 0.1) and is **not** the epoch-precision pass/fail. Mask lane deploy: `calibration/mask_lane_deploy.md`.
+- **Short-pair QC** (step 05a; Δt≈0 absolute + epoch-CCF scatter / σ_ij inflation):
+  - `PYTHONPATH=. python -m validation.find_short_pairs --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_epoch_*_diagnostics.csv' --data-root /Users/rfoley/darkhunter/rvs/data --epoch-ccf-root validation_output/epoch_ccf --out-dir validation_output/short_pair_qc --max-delta-days 1`
+  - Optional `--same-calendar-night`; `--compute-epoch-ccf` when step-11 pairs CSV missing; `--abs-violation-kms` / `--n-sigma` for flags.
+  - Artifacts: `validation_output/short_pair_qc/short_pairs.csv`, `SHORT_PAIR_QC.md`, `short_pair_sigma_scale.json`; tracked summary `calibration/short_pair_sigma_scale.json` (+ `.csv`).
+  - Feed recommended scale into matrix: `--sigma-ij-scale` on `validation.epoch_ccf_matrix` (or `inflate_sigma_ij`).
+- **Epoch–epoch CCF matrix** (step 11; relative RVs + optional abs fill; **not** default adopted RV):
+  - `PYTHONPATH=. python -m validation.epoch_ccf_matrix --gaia-id <id> --data-root /Users/rfoley/darkhunter/rvs/data --abs-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' --out-dir validation_output/epoch_ccf/<id>`
+  - Artifacts: `epoch_ccf_pairs.csv`, `epoch_ccf_matrix.npz`, `epoch_ccf_abs_fill.csv` (`epoch_ccf_rel` / `epoch_ccf_abs_fill` columns), `epoch_ccf_meta.json`. Diagonal auto-corr should be ~0; when abs anchors exist, see `epoch_ccf_vs_abs_delta.csv`.
+  - Low-S/N salvage: run without requiring every epoch to have mask/template; pairs vs a high-S/N epoch still fill via WLS when ≥1 abs anchor (or relative-only if none).
 - **Phase A baseline** (overlap inventory + calibration gates; regression vs `calibration/phase_a_baseline/reference_manifest.json`):
   - `python -m validation.rv_phase_a_baseline --master calibration/literature_rv_master.csv --summary-dir output --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/rv_phase_a_baseline`
   - Absolute gate (APF vs literature, |ΔRV| < 1 km/s): use `--no-bias-correction-applied` after a `--no-bias` pipeline rerun on overlap stars.
@@ -51,6 +62,13 @@
   - Omit `--no-bias` to apply repo [`bias_statistics.txt`](bias_statistics.txt) (match legacy if it was debiased). Add `--no-bias` only for an explicit no-debias comparison.
   - Pipeline flags go **after a lone `--`**.
   - **Multi-star:** use a broad glob (e.g. `Gaia_DR3_*.txt`) and **`--multi-star`**; reports go under `report-dir/<source_id>/`. Optional `--min-epochs 10` and `--write-combined-csv`.
+- **Literature RV cross-check (step 08; El-Badry master vs mask/template + LAMOST/RAVE):**
+  - Lite: `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_blaze_split/*_diagnostics.csv' --report-dir validation_output/literature_crosscheck_lite --copy-key-table calibration/literature_crosscheck_lite/per_star_bias_rms.csv`
+  - Full (LAMOST/RAVE from summaries): `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_blaze_split/*_diagnostics.csv' --summaries-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_summary.txt' --report-dir validation_output/literature_crosscheck_full --copy-key-table calibration/literature_crosscheck_full/per_star_bias_rms.csv`
+  - Optional: add `strong_lines` via `--methods mask_ccf,template_fft,strong_lines`.
+  - Orbit-plot overlay from master CSV: `python fit_apf_rv_keplerian.py --summary /Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_<id>_summary.txt --literature-master calibration/literature_rv_master.csv`
+  - Outputs (gitignored): `validation_output/literature_crosscheck_full/{REPORT.md,epoch_pairs.csv,per_star_bias_rms.csv,orbit_qa.csv,external_*.csv}`; tracked key tables under `calibration/literature_crosscheck_full/`.
+  - Nearest-BJD join on `gaia_dr3_id` for pipeline↔literature and external↔literature (LAMOST_LRS / LAMOST_MRS / RAVE_DR6 by default).
 - Interpretation plots + text (after diagnose, or on existing CSVs):
   - `env PYTHONPATH=. python3 validation/legacy_interpretation_report.py --report-dir validation_output/diagnose_legacy --pipeline-summary validation_output/pipeline_rerun/Gaia_DR3_<id>_summary.txt --legacy-summary ../output/<id>_summary.txt`
 
@@ -75,3 +93,14 @@
 - If method offsets are coherent with Teff or mask-line count, use those features in post-hoc method trust regions.
 - If error coverage is under-dispersed, increase systematic floor terms per method/instrument/chunk family.
 - For broad-line stars, use the benchmark recommendation from `docs/broad_line_method.md`.
+
+## SB2 search (step 07)
+
+Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit. **Not** fused into pipeline `*_diagnostics.csv` yet.
+
+- Per-star search: `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
+  - Outputs: `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, …), `sb2_orders.csv`, `sb2_report.json`; on detect/`--force-fit`: `sb2_fit.json` + separated spectra.
+- Fit diagnostics: `python -m validation.sb2_fit_diagnostics_report --sb2-dir validation_output/sb2_<id>`
+- Optional SB2 orbit (07c): `python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_<id>` (uses `darkhunter_rv.sb2_rv_fit`; single-lined Keplerian fitter unchanged).
+- Unit tests: `python -m pytest tests/test_sb2.py tests/test_sb2_rv_fit.py tests/test_plot_sb2_decomposition_orders.py -m "not slow"`
+- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag. Cohort fraction vs Gaia NSS SB2 still open.

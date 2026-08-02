@@ -1,7 +1,7 @@
 ---
 step_id: 05-short-pair-epoch-ccf
 phase: E
-status: pending
+status: in_progress
 github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/42
 branches:
   - step/05a-short-pair-calibration
@@ -38,10 +38,10 @@ Use closely spaced epoch pairs (~0 true ΔRV) to calibrate and stress-test absol
 
 ### 05a (`step/05a-short-pair-calibration`)
 
-- [ ] Find pairs with Δt &lt; configurable threshold (default: same night)
-- [ ] Report ΔRV per absolute method; flag pairs violating ~0 km/s assumption
-- [ ] Report ΔRV from step 11 matrix vs 0; use to inflate \(\sigma_{ij}\)
-- [ ] Integrate into `run_calibration_setup` docs
+- [x] Find pairs with Δt &lt; configurable threshold (default: same night)
+- [x] Report ΔRV per absolute method; flag pairs violating ~0 km/s assumption
+- [x] Report ΔRV from step 11 matrix vs 0; use to inflate \(\sigma_{ij}\)
+- [x] Integrate into `run_calibration_setup` docs
 
 ### 05b — superseded
 

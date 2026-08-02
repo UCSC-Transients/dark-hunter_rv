@@ -186,8 +186,43 @@ def _mask_ccf_stack_error_inflated(
     return float(max(formal, from_rms, from_mad, from_std, 1e-9))
 
 
-def _weighted_method_rv_from_rows(rows: list[dict], method: str) -> tuple[float, float]:
-    """Error-weighted mean over diagnostics rows for one method (per-chunk or exposure-level)."""
+def _diag_row_for_chunk(rows: list[dict], chunk_key: str, method: str) -> dict:
+    """Return first diagnostics row matching chunk_key + method (empty dict if missing)."""
+    for r in rows:
+        if str(r.get("chunk_key", "")) == str(chunk_key) and str(r.get("method", "")) == str(method):
+            return r
+    return {}
+
+
+def _trust_weight_for_row(
+    row: dict,
+    *,
+    rv_kms: float,
+    robust_mean_kms: float,
+    trust_cfg: dict,
+) -> tuple[float, dict[str, float]]:
+    """Compute trust components for one chunk row."""
+    comps = qc.chunk_trust_components(
+        rv_kms=float(rv_kms),
+        robust_mean_kms=float(robust_mean_kms),
+        telluric_fraction=float(row.get("telluric_fraction", np.nan)),
+        ccf_peak_snr=float(row.get("ccf_peak_snr", np.nan)),
+        ccf_asymmetry=float(row.get("ccf_asymmetry", np.nan)),
+        cfg=trust_cfg,
+    )
+    return float(comps["trust_weight"]), comps
+
+
+def _weighted_method_rv_from_rows(
+    rows: list[dict],
+    method: str,
+    trust_cfg: dict | None = None,
+) -> tuple[float, float]:
+    """Error-weighted mean over diagnostics rows for one method (per-chunk or exposure-level).
+
+    When ``trust_cfg["enabled"]`` is true, scale IVW by residual / telluric / CCF trust.
+    """
+    tw_cfg = dict(qc.DEFAULT_TRUST_WEIGHTS if trust_cfg is None else trust_cfg)
     ck_all_only = method in ("strong_lines",)
     sub: list[dict] = []
     for r in rows:
@@ -219,9 +254,20 @@ def _weighted_method_rv_from_rows(rows: list[dict], method: str) -> tuple[float,
         if not np.all(keep):
             rv = rv[keep]
             er = er[keep]
+            sub = [s for s, k in zip(sub, keep) if k]
         if len(rv) < int(config.MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK):
             return float("nan"), float("nan")
-    w = 1.0 / (er**2 + 1e-18)
+    robust_mu = float(np.median(rv))
+    trusts = np.array(
+        [
+            _trust_weight_for_row(s, rv_kms=float(rvi), robust_mean_kms=robust_mu, trust_cfg=tw_cfg)[0]
+            for s, rvi in zip(sub, rv)
+        ],
+        dtype=float,
+    )
+    w = qc.ivw_weights_with_trust(er, trusts, enabled=bool(tw_cfg.get("enabled", False)))
+    if float(np.sum(w)) <= 0:
+        w = 1.0 / (er**2 + 1e-18)
     mu = float(np.sum(w * rv) / np.sum(w))
     sig = float(np.sqrt(1.0 / np.sum(w)))
     if method == "mask_ccf":
@@ -586,6 +632,46 @@ def _mask_tournament(
     return best_pack, best_name, scores
 
 
+
+def _panels_for_adopted_rv_match(
+    chunk_preps: list[dict],
+    strong_lines: list[tuple[str, float]] | None,
+    *,
+    max_panels: int = 6,
+) -> list[tuple[str, np.ndarray, np.ndarray]]:
+    """Pick up to ``max_panels`` unique-order norm chunks; prefer orders covering strong lines."""
+    by_order: dict[int, tuple[str, np.ndarray, np.ndarray]] = {}
+    for prep in chunk_preps:
+        ck = str(prep.get("chunk_key", ""))
+        o, _sort, _kind = chunking.parse_chunk_key(ck)
+        if o is None:
+            continue
+        oi = int(o)
+        nw = np.asarray(prep.get("nw"), float)
+        nf = np.asarray(prep.get("nf"), float)
+        if nw.size < 10 or nf.size != nw.size:
+            continue
+        if oi not in by_order:
+            by_order[oi] = (ck, nw, nf)
+
+    lines = list(strong_lines) if strong_lines else []
+    scored: list[tuple[int, int, str, np.ndarray, np.ndarray]] = []
+    for oi, (ck, nw, nf) in by_order.items():
+        wmin, wmax = float(nw[0]), float(nw[-1])
+        hits = 0
+        for _name, rest in lines:
+            r = float(rest)
+            if wmin <= r <= wmax:
+                hits += 1
+        scored.append((hits, oi, ck, nw, nf))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    picked = scored[: max(1, int(max_panels))]
+    # Stable wavelength order for readability
+    picked.sort(key=lambda t: t[1])
+    return [(ck, nw, nf) for _h, _o, ck, nw, nf in picked]
+
+
+
 def process_spectrum(
     spectrum_file: str,
     args: argparse.Namespace,
@@ -614,6 +700,18 @@ def process_spectrum(
         use_fft_primary = False
         run_multi = False
     qc_thresholds = qc.load_qc_config(Path(args.qc_config), instrument.name)
+    trust_cfg = qc.load_trust_weights_config(Path(args.qc_config))
+    if bool(getattr(args, "trust_weights", False)):
+        trust_cfg["enabled"] = True
+    if bool(getattr(args, "no_trust_weights", False)):
+        trust_cfg["enabled"] = False
+    if bool(trust_cfg.get("enabled", False)):
+        logger.info(
+            "Trust-weighted IVW stack enabled (residual_scale=%.2f telluric soft/hard=%.2f/%.2f)",
+            float(trust_cfg["residual_scale_kms"]),
+            float(trust_cfg["telluric_soft_max"]),
+            float(trust_cfg["telluric_hard_max"]),
+        )
 
     mask_dir = Path(instrument.mask_directory)
     valid_orders = sorted(o for o in spec_data if o not in instrument.bad_orders)
@@ -982,6 +1080,8 @@ def process_spectrum(
             )
             diagnostics_rows[-1]["ccf_width"] = w_ccf
             diagnostics_rows[-1]["ccf_asymmetry"] = asym_ccf
+            diagnostics_rows[-1]["telluric_fraction"] = float(tell_frac)
+            diagnostics_rows[-1]["mask_line_count"] = float(mask_line_count)
             diagnostics_rows[-1]["qc_pass"] = qc_ok
             diagnostics_rows[-1]["qc_reason"] = qc_reason
             qc_ok_mask_chunk = bool(qc_ok)
@@ -1106,8 +1206,13 @@ def process_spectrum(
                     "rv_kms": rv_t,
                     "rv_err_kms": err_t,
                     "ccf_peak": np.nan,
+                    "ccf_peak_snr": np.nan,
                     "gauss_ok": False,
                     "template_key": str(tpl_key),
+                    "telluric_fraction": float(tell_frac),
+                    "mask_line_count": float(mask_line_count),
+                    "ccf_width": np.nan,
+                    "ccf_asymmetry": np.nan,
                     "fft_ccf_qc_reason": fft_ccf_qc_reason,
                     "fft_ccf_rss_ratio": fft_ccf_rss_ratio,
                     "qc_pass": tpl_fft_qc_pass,
@@ -1258,7 +1363,20 @@ def process_spectrum(
             mean_rv, mean_err, rms = np.nan, np.nan, np.nan
         else:
             stack_pairs = set(zip(keys_arr.tolist(), meth_arr.tolist()))
-            wts = 1.0 / (err_arr**2 + 1e-9)
+            robust_mu = float(np.median(rv_arr))
+            trust_vals = []
+            for ck_i, meth_i, rv_i in zip(keys_arr.tolist(), meth_arr.tolist(), rv_arr.tolist()):
+                drow = _diag_row_for_chunk(diagnostics_rows, str(ck_i), str(meth_i))
+                tw_i, _comps = _trust_weight_for_row(
+                    drow, rv_kms=float(rv_i), robust_mean_kms=robust_mu, trust_cfg=trust_cfg
+                )
+                trust_vals.append(tw_i)
+            trust_arr = np.asarray(trust_vals, float)
+            wts = qc.ivw_weights_with_trust(
+                err_arr, trust_arr, enabled=bool(trust_cfg.get("enabled", False))
+            )
+            if float(np.sum(wts)) <= 0:
+                wts = 1.0 / (err_arr**2 + 1e-9)
             mean_rv = float(np.average(rv_arr, weights=wts))
             mean_err = float(np.sqrt(1.0 / np.sum(wts)))
             rms = _weighted_rms(rv_arr, err_arr, mu_weighted=mean_rv)
@@ -1567,8 +1685,8 @@ def process_spectrum(
         and hb_fit_balmer is not None
         and plot_root is not None
     ):
-        rv_m_exp, err_m_exp = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf")
-        rv_t_exp, err_t_exp = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft")
+        rv_m_exp, err_m_exp = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf", trust_cfg=trust_cfg)
+        rv_t_exp, err_t_exp = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft", trust_cfg=trust_cfg)
         tpl_k = _dominant_template_key(diagnostics_rows)
         tpl_pair = _bank_entry_for_template_key_str(bank, tpl_k)
         if tpl_pair is not None:
@@ -1598,8 +1716,8 @@ def process_spectrum(
         and (run_multi or use_fft_primary or args.hb_rv_fallback)
         and not wrote_hb_overlay
     ):
-        rv_m_hb, err_m_hb = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf")
-        rv_t_hb, err_t_hb = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft")
+        rv_m_hb, err_m_hb = _weighted_method_rv_from_rows(diagnostics_rows, "mask_ccf", trust_cfg=trust_cfg)
+        rv_t_hb, err_t_hb = _weighted_method_rv_from_rows(diagnostics_rows, "template_fft", trust_cfg=trust_cfg)
         tpl_leg = "Template FFT"
         if not np.isfinite(rv_t_hb) and hb_order is not None:
             rv_t_hb, err_t_hb = _weighted_template_fft_for_order(diagnostics_rows, int(hb_order))
@@ -1691,6 +1809,12 @@ def process_spectrum(
             if len(rv_arr) > 1
             else (0.0 if len(rv_arr) == 1 else np.nan)
         )
+        robust_for_trust = (
+            float(np.median(rv_arr))
+            if len(rv_arr) > 0
+            else (float(mean_rv) if np.isfinite(mean_rv) else float("nan"))
+        )
+        trust_enabled = bool(trust_cfg.get("enabled", False))
         for row in diagnostics_rows:
             ck = str(row.get("chunk_key", ""))
             meth = str(row.get("method", ""))
@@ -1700,6 +1824,72 @@ def process_spectrum(
             row["chunk_scatter_kms"] = chunk_scatter if np.isfinite(chunk_scatter) else np.nan
             rv_row = row.get("rv_kms", np.nan)
             row["residual_to_exposure_kms"] = float(rv_row - mean_rv) if np.isfinite(rv_row) and np.isfinite(mean_rv) else np.nan
+            _tw, comps = _trust_weight_for_row(
+                row,
+                rv_kms=float(rv_row) if np.isfinite(rv_row) else float("nan"),
+                robust_mean_kms=robust_for_trust,
+                trust_cfg=trust_cfg,
+            )
+            row["trust_residual"] = comps["trust_residual"]
+            row["trust_telluric"] = comps["trust_telluric"]
+            row["trust_ccf"] = comps["trust_ccf"]
+            row["trust_weight"] = comps["trust_weight"]
+            er_row = float(row.get("rv_err_kms", np.nan))
+            if np.isfinite(er_row) and er_row > 0:
+                ivw = float(1.0 / (er_row**2 + 1e-9))
+            else:
+                ivw = float("nan")
+            row["ivw_weight"] = ivw
+            if np.isfinite(ivw):
+                row["stack_weight"] = float(ivw * comps["trust_weight"]) if trust_enabled else float(ivw)
+            else:
+                row["stack_weight"] = float("nan")
+            row["trust_weights_enabled"] = bool(trust_enabled)
+
+
+    # Routine adopted-RV match figure (--plots and --plots-focus); no outlier threshold.
+    if plot_root is not None and chunk_preps and np.isfinite(float(mean_rv)):
+        plot_rv = float(mean_rv)
+        rv_src = "cascade adopted (debiased)"
+        if run_multi and diagnostics_rows:
+            # Inline: method_evaluation imports pipeline helpers (circular if top-level).
+            from . import method_evaluation as me
+            from . import method_fusion as mf
+
+            fl_plot = me.exposure_method_flags(diagnostics_rows)
+            mo_arg = getattr(args, "method_offsets_file", None)
+            mo_path = Path(mo_arg) if mo_arg is not None else None
+            if mo_path is not None and not mo_path.is_file():
+                mo_path = None
+            if mo_path is None:
+                mo_path = config.METHOD_OFFSETS_FILE
+            off_tbl_plot: dict = {}
+            if mo_path is not None and mo_path.is_file():
+                off_tbl_plot = io_utils.read_method_rv_offsets(mo_path, warn_if_missing=False)
+            off_row_plot = off_tbl_plot.get(str(instrument.name)) if off_tbl_plot else None
+            fl_off_plot = me.flags_with_method_offsets(fl_plot, off_row_plot)
+            fus = mf.fuse_exposure(fl_off_plot, teff=float(teff_diag))
+            rv_cal = float(fus.get("rv_calibrated_kms", float("nan")))
+            if bool(fus.get("rv_accepted", False)) and np.isfinite(rv_cal):
+                plot_rv = rv_cal
+                am2 = str(fus.get("adopted_method_v2", "") or "")
+                rv_src = f"fusion rv_calibrated ({am2})" if am2 else "fusion rv_calibrated"
+        try:
+            sl_rests = rv_core.strong_line_rests_for_teff(float(teff_diag))
+        except Exception:
+            sl_rests = []
+        panels = _panels_for_adopted_rv_match(chunk_preps, sl_rests, max_panels=6)
+        if panels:
+            plotting.plot_adopted_rv_match(
+                panels,
+                plot_root / f"{stem}_adopted_rv_match.png",
+                adopted_rv_kms=plot_rv,
+                mask_wave=np.asarray(mw, float) if mw is not None else None,
+                mask_strength=np.asarray(ms, float) if ms is not None else None,
+                strong_lines=sl_rests,
+                title=stem,
+                rv_source_label=rv_src,
+            )
 
     # Write per-spectrum diagnostics CSV
     if diagnostics_rows and not plots_only:
@@ -1809,7 +1999,7 @@ def main(argv: list[str] | None = None) -> None:
         "--plots-focus",
         action="store_true",
         dest="plots_focus",
-        help="With --plots: only chunk_rvs, rv_vs_order, ccf_orders, and strong_lines Hβ diagnostic PNG (skip per-order norm/CCF/FFT/etc.)",
+        help="With --plots: only chunk_rvs, rv_vs_order, ccf_orders, adopted_rv_match, and strong_lines Hβ diagnostic PNG (skip per-order norm/CCF/FFT/etc.)",
     )
     parser.add_argument(
         "--plots-skip-chunk-pngs",
@@ -1898,6 +2088,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--max-chunk-err", type=float, default=50.0, help="Skip chunk RVs with err > this (km/s)")
     parser.add_argument("--qc-config", default="order_chunk_qc.yaml", help="QC threshold YAML")
     parser.add_argument("--write-qc-config", action="store_true", help="Write default QC config if missing")
+    parser.add_argument(
+        "--trust-weights",
+        action="store_true",
+        help="Enable trust-scaled IVW stack (residual/telluric/CCF); overrides order_chunk_qc.yaml trust_weights.enabled",
+    )
+    parser.add_argument(
+        "--no-trust-weights",
+        action="store_true",
+        help="Disable trust-scaled IVW stack even if enabled in QC YAML",
+    )
     parser.add_argument(
         "--mask-only",
         action="store_true",

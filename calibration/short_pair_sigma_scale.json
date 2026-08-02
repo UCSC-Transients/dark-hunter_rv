@@ -1,0 +1,11 @@
+{
+  "recommended_sigma_ij_scale": 1.2789366731299814,
+  "rms_kms": 48.72039736696063,
+  "mad_kms": 3.109727050502977,
+  "median_formal_err_kms": 3.604933240198937,
+  "n_epoch_ccf": 65.0,
+  "n_pairs": 65,
+  "max_delta_days": 1.0,
+  "report": "validation_output/short_pair_qc/SHORT_PAIR_QC.md",
+  "pairs_csv": "validation_output/short_pair_qc/short_pairs.csv"
+}

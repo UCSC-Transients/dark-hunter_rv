@@ -647,3 +647,22 @@ def test_solve_m2_with_inclination_matches_edge_on() -> None:
     m2_i90 = fitmod.solve_m2_with_inclination_msun(f_mass, m1, 90.0)
     assert m2_i90 is not None
     assert m2_i90 == pytest.approx(m2sini, rel=1e-6)
+
+def test_merge_literature_master_points_from_csv(tmp_path: Path) -> None:
+    master = tmp_path / "master.csv"
+    master.write_text(
+        "reference_key,obs_index,gaia_dr3_id,name,bjd,rv_kms,rv_err_kms,instrument\n"
+        "ElBadryTest,1,1000000000000000001,STAR,2459900.5,-12.5,0.1,FEROS\n"
+    )
+    summ = tmp_path / "Gaia_DR3_1000000000000000001_summary.txt"
+    summ.write_text(
+        "[GAIA METADATA]\nSource_ID: 1000000000000000001\nRA: 1.0\nDec: 2.0\n"
+        "\n[PIPELINE RESULTS]\n"
+        "Gaia_DR3_1000000000000000001_epoch_1.txt 60000.0 -10.0 0.2 0.3 False\n"
+    )
+    pts = fitmod.parse_summary(summ)
+    merged = fitmod.merge_literature_master_points(pts, "1000000000000000001", master)
+    lit = [p for p in merged if p.is_literature]
+    assert len(lit) == 1
+    assert lit[0].telescope == "FEROS"
+    assert lit[0].rv == pytest.approx(-12.5)

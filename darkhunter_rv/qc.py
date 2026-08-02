@@ -64,11 +64,178 @@ DEFAULT_QC = {
 }
 
 
+DEFAULT_TRUST_WEIGHTS = {
+    # Opt-in: when enabled, exposure / method IVW stacks scale 1/σ² by trust_weight.
+    "enabled": False,
+    "residual_scale_kms": 5.0,
+    "residual_power": 2.0,
+    "telluric_soft_max": 0.10,
+    "telluric_hard_max": 0.30,
+    "ccf_snr_ref": 8.0,
+    "max_ccf_asymmetry": 0.55,
+    "min_trust": 0.05,
+}
+
+
+def load_trust_weights_config(path: Path) -> Dict:
+    """Load ``trust_weights`` block from QC YAML (defaults = opt-in off)."""
+    cfg = dict(DEFAULT_TRUST_WEIGHTS)
+    p = Path(path)
+    if p.exists() and yaml is not None:
+        loaded = yaml.safe_load(p.read_text()) or {}
+        tw = loaded.get("trust_weights") or {}
+        if isinstance(tw, dict):
+            cfg.update(tw)
+    cfg["enabled"] = bool(cfg.get("enabled", False))
+    for key in (
+        "residual_scale_kms",
+        "residual_power",
+        "telluric_soft_max",
+        "telluric_hard_max",
+        "ccf_snr_ref",
+        "max_ccf_asymmetry",
+        "min_trust",
+    ):
+        try:
+            cfg[key] = float(cfg[key])
+        except (TypeError, ValueError, KeyError):
+            cfg[key] = float(DEFAULT_TRUST_WEIGHTS[key])
+    return cfg
+
+
+def trust_factor_residual(
+    rv_kms: float,
+    robust_mean_kms: float,
+    *,
+    scale_kms: float,
+    power: float,
+) -> float:
+    """Down-weight chunks far from robust mean (median) of the stack cohort."""
+    if not np.isfinite(rv_kms) or not np.isfinite(robust_mean_kms):
+        return 1.0
+    scale = float(scale_kms)
+    if not np.isfinite(scale) or scale <= 0:
+        return 1.0
+    p = float(power) if np.isfinite(power) and power > 0 else 2.0
+    z = abs(float(rv_kms) - float(robust_mean_kms)) / scale
+    return float(1.0 / (1.0 + z**p))
+
+
+def trust_factor_telluric(
+    telluric_fraction: float,
+    *,
+    soft_max: float,
+    hard_max: float,
+) -> float:
+    """Piecewise-linear telluric trust: 1 below soft_max, 0 at/above hard_max."""
+    if not np.isfinite(telluric_fraction):
+        return 1.0
+    soft = float(soft_max)
+    hard = float(hard_max)
+    if hard <= soft:
+        hard = soft + 1e-6
+    frac = float(telluric_fraction)
+    if frac <= soft:
+        return 1.0
+    if frac >= hard:
+        return 0.0
+    return float((hard - frac) / (hard - soft))
+
+
+def trust_factor_ccf_quality(
+    ccf_peak_snr: float,
+    ccf_asymmetry: float,
+    *,
+    snr_ref: float,
+    max_asymmetry: float,
+) -> float:
+    """CCF quality trust from peak S/N and asymmetry; missing metrics → 1 (template-safe)."""
+    w = 1.0
+    snr = float(ccf_peak_snr) if np.isfinite(ccf_peak_snr) else float("nan")
+    ref = float(snr_ref) if np.isfinite(snr_ref) and snr_ref > 0 else 8.0
+    if np.isfinite(snr):
+        w *= float(np.clip(snr / ref, 0.0, 1.0))
+    asym = float(ccf_asymmetry) if np.isfinite(ccf_asymmetry) else float("nan")
+    amax = float(max_asymmetry) if np.isfinite(max_asymmetry) and max_asymmetry > 0 else 0.55
+    if np.isfinite(asym):
+        w *= float(np.clip(1.0 - asym / amax, 0.0, 1.0))
+    return float(w)
+
+
+def chunk_trust_components(
+    *,
+    rv_kms: float,
+    robust_mean_kms: float,
+    telluric_fraction: float = float("nan"),
+    ccf_peak_snr: float = float("nan"),
+    ccf_asymmetry: float = float("nan"),
+    cfg: Dict | None = None,
+) -> Dict[str, float]:
+    """
+    Per-chunk trust factors for IVW scaling.
+
+    Returns trust_residual, trust_telluric, trust_ccf, trust_weight (product floored at min_trust).
+    """
+    tw = dict(DEFAULT_TRUST_WEIGHTS if cfg is None else cfg)
+    t_res = trust_factor_residual(
+        rv_kms,
+        robust_mean_kms,
+        scale_kms=float(tw["residual_scale_kms"]),
+        power=float(tw["residual_power"]),
+    )
+    t_tel = trust_factor_telluric(
+        telluric_fraction,
+        soft_max=float(tw["telluric_soft_max"]),
+        hard_max=float(tw["telluric_hard_max"]),
+    )
+    t_ccf = trust_factor_ccf_quality(
+        ccf_peak_snr,
+        ccf_asymmetry,
+        snr_ref=float(tw["ccf_snr_ref"]),
+        max_asymmetry=float(tw["max_ccf_asymmetry"]),
+    )
+    prod = float(t_res * t_tel * t_ccf)
+    min_t = float(tw.get("min_trust", 0.05))
+    if not np.isfinite(min_t) or min_t < 0:
+        min_t = 0.05
+    # Hard telluric kill stays at 0 (do not floor).
+    if t_tel <= 0.0:
+        trust = 0.0
+    else:
+        trust = float(max(min_t, prod))
+    return {
+        "trust_residual": float(t_res),
+        "trust_telluric": float(t_tel),
+        "trust_ccf": float(t_ccf),
+        "trust_weight": float(trust),
+    }
+
+
+def ivw_weights_with_trust(
+    errs_kms: np.ndarray,
+    trust_weights: np.ndarray,
+    *,
+    enabled: bool,
+) -> np.ndarray:
+    """Return IVW weights, optionally scaled by trust (opt-in)."""
+    er = np.asarray(errs_kms, float).ravel()
+    tw = np.asarray(trust_weights, float).ravel()
+    if er.size != tw.size:
+        raise ValueError("errs_kms and trust_weights length mismatch")
+    base = 1.0 / (er**2 + 1e-9)
+    if not enabled:
+        return base
+    out = base * np.where(np.isfinite(tw), tw, 1.0)
+    out = np.where(np.isfinite(out) & (out > 0), out, 0.0)
+    return out
+
+
 def ensure_qc_config(path: Path) -> None:
     path = Path(path)
     if path.exists() or yaml is None:
         return
-    path.write_text(yaml.safe_dump(DEFAULT_QC, sort_keys=False))
+    payload = {**DEFAULT_QC, "trust_weights": dict(DEFAULT_TRUST_WEIGHTS)}
+    path.write_text(yaml.safe_dump(payload, sort_keys=False))
 
 
 def load_qc_config(path: Path, instrument: str) -> Dict:

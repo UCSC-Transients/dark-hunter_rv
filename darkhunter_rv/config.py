@@ -215,6 +215,9 @@ MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK = 3
 # Below this, return NaN from inverse-variance aggregation (same idea as template_fft).
 MIN_MASK_CCF_CHUNKS_FOR_STACK = 5
 
+# Trust-weighted IVW (step 02b): defaults live in order_chunk_qc.yaml ``trust_weights`` (enabled: false).
+# CLI: --trust-weights / --no-trust-weights. Scales 1/σ² by residual-vs-robust-mean × telluric × CCF quality.
+
 # Mask CCF Gaussian: reject fits narrower than this (noise spikes); widen lag if peak sits near grid edge.
 MASK_CCF_DEFAULT_MAX_LAG = 420
 MASK_CCF_MIN_GAUSS_SIGMA_KMS = 2.5

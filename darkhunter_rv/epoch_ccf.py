@@ -53,8 +53,12 @@ def _common_log_grid(
     wave_j: np.ndarray,
     *,
     min_pixels: int = 256,
+    max_pixels: int | None = 16384,
 ) -> np.ndarray | None:
-    """Overlap log10-λ grid sized to next power of two (≥ ``min_pixels``)."""
+    """Overlap log10-λ grid sized to next power of two (≥ ``min_pixels``).
+
+    ``max_pixels`` caps FFT size for full-echelle 1D products (None = uncapped).
+    """
     wi = np.asarray(wave_i, float)
     wj = np.asarray(wave_j, float)
     lo = max(float(np.nanmin(wi)), float(np.nanmin(wj)))
@@ -63,6 +67,10 @@ def _common_log_grid(
         return None
     n_est = int(min(len(wi), len(wj)))
     npts = max(2 ** int(np.ceil(np.log2(max(n_est, min_pixels)))), min_pixels)
+    if max_pixels is not None and npts > int(max_pixels):
+        # Cap to largest power of two ≤ max_pixels
+        npts = 2 ** int(np.floor(np.log2(max(int(max_pixels), min_pixels))))
+        npts = max(npts, min_pixels)
     return np.linspace(np.log10(lo), np.log10(hi), npts)
 
 
@@ -171,6 +179,7 @@ def epoch_pair_ccf(
     *,
     rv_search_half_width_kms: float = 500.0,
     fit_width: int = 40,
+    max_grid_points: int | None = 16384,
 ) -> EpochPairCcfResult:
     """
     Cross-correlate continuum-normalized epoch ``i`` against epoch ``j``.
@@ -185,6 +194,9 @@ def epoch_pair_ccf(
         Half-width of the lag search window about 0.
     fit_width
         Half-window (samples) for Gaussian peak fit around the grid argmax.
+    max_grid_points
+        Cap on log-λ FFT length (power-of-two). ``None`` uses uncapped sizing
+        from the input sampling.
 
     Returns
     -------
@@ -199,7 +211,7 @@ def epoch_pair_ccf(
     convention. Does not mask tellurics. Best on well-overlapped 1D products;
     per-order IVW stacking is out of spike scope.
     """
-    log_grid = _common_log_grid(wave_i, wave_j)
+    log_grid = _common_log_grid(wave_i, wave_j, max_pixels=max_grid_points)
     if log_grid is None:
         return EpochPairCcfResult(
             dv_kms=float("nan"),
@@ -230,9 +242,16 @@ def epoch_pair_ccf(
         )
     vel, ccf = pair
     dv, err, peak, width, peak_snr, fit_ok = _fit_ccf_peak(vel, ccf, fit_width=fit_width)
-    auto = bool(np.allclose(np.asarray(wave_i, float), np.asarray(wave_j, float)) and np.allclose(
-        np.asarray(flux_i, float), np.asarray(flux_j, float)
-    ))
+    wi_a = np.asarray(wave_i, float)
+    wj_a = np.asarray(wave_j, float)
+    fi_a = np.asarray(flux_i, float)
+    fj_a = np.asarray(flux_j, float)
+    auto = bool(
+        wi_a.shape == wj_a.shape
+        and fi_a.shape == fj_a.shape
+        and np.allclose(wi_a, wj_a)
+        and np.allclose(fi_a, fj_a)
+    )
     qc: dict[str, float | bool | str] = {
         "ok": bool(fit_ok and np.isfinite(dv)),
         "n_grid": float(len(log_grid)),
@@ -250,6 +269,51 @@ def epoch_pair_ccf(
         fit_ok=bool(fit_ok),
         qc=qc,
     )
+
+
+def inflate_sigma_ij(
+    sigma_ij: np.ndarray,
+    scale: float,
+    *,
+    floor: float = 1.0,
+) -> np.ndarray:
+    """
+    Multiply pairwise formal uncertainties by a global short-pair scale factor.
+
+    Parameters
+    ----------
+    sigma_ij
+        ``(N, N)`` formal pair uncertainties from epoch–epoch CCF.
+    scale
+        Multiplicative inflation (typically RMS(|Δv|) / median(σ) on Δt≈0 pairs).
+        Values ``<= 1`` leave the matrix unchanged when combined with ``floor``.
+    floor
+        Minimum applied scale (default 1.0 = never deflate).
+
+    Returns
+    -------
+    np.ndarray
+        Copy of ``sigma_ij`` with finite positive entries scaled by
+        ``max(floor, scale)``. Diagonal left unchanged.
+
+    Limitations
+    -----------
+    Global scalar only; does not model time- or S/N-dependent underestimation.
+    Prefer calibrating ``scale`` from ``validation.find_short_pairs`` QC.
+    """
+    sig = np.asarray(sigma_ij, float).copy()
+    fac = max(float(floor), float(scale))
+    if not np.isfinite(fac) or fac <= 0:
+        raise ValueError("scale/floor must be finite and positive")
+    if fac == 1.0:
+        return sig
+    mask = np.isfinite(sig) & (sig > 0)
+    # Keep diagonal as-is (auto-corr QC widths are not orbit-pair errors)
+    n = sig.shape[0]
+    for i in range(n):
+        mask[i, i] = False
+    sig[mask] = sig[mask] * fac
+    return sig
 
 
 def combine_relative_and_absolute(
@@ -283,7 +347,7 @@ def combine_relative_and_absolute(
 
     Limitations
     -----------
-    Formal covariance only; no short-pair inflation. Assumes independent pair
+    Formal covariance only. Apply :func:`inflate_sigma_ij` first for short-pair scatter inflation. Assumes independent pair
     errors (overcounts information if both triangles supplied with
     ``use_upper_triangle_only=False``).
     """
