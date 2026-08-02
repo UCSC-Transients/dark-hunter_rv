@@ -240,13 +240,24 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P2** 08 lite done (`a6ffe75`, n_stars=4) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
 - [x] **P3** Fusion + adopted plots **local done** (`9de6c68`, `fa0578c`); merge/PR pending human
 - [x] **P4** Matrix CLI (`be9b0a3`) + short-pair QC (`47caa15`, σ-scale≈1.28 MAD); merge/PR pending
-- [ ] **P5** 02b + SB2 (reuse WIP) + 08-full — launching
+- [~] **P5** Local done w/ residuals: TRUST-02B `f0400f9` (opt-in); SB2 `7129124` (NSS/pipeline fuse open); 08-full `fec76dc` PARTIAL (n_lit=4)
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human PRs:** Phases 1–4 stacks still waiting go (significant backlog).
-2. Phase 5 parallel: TRUST-02B, SB2-07, LIT-08-FULL
-3. Pre-final bias rebuild + ziggy still human-gated
+1. **Human: PR wave** — Phases 1–5 still local only; need push/PR approvals (see branch list below).
+2. Pre-final: bias rebuild + ziggy (§12.1) when you say go.
+3. Soft residuals (not blocking PR start): 11d product tags; SB2 NSS table + pipeline fuse; trust campaign A/B; more lit diagnostics (≥10 stars).
+
+### Branch map for PRs (local tips)
+
+| Phase | Branches (tip) |
+|-------|----------------|
+| Docs/orch | `docs/orchestrator-post-90` |
+| 1 | `step/10c-method-offsets` (`18d6cec`), `step/02a-bias-defer-verify` (`5fd36fa`), `step/06-post-merge-qa` (`767d68b`), `step/11-epoch-ccf-matrix`/`-cli` (`dbe7e8d`→`be9b0a3`) |
+| 2 | `step/01-cool-closeout` (`5c352e4`), `step/08-external-rv-crosscheck` (`a6ffe75`) |
+| 3 | `step/03-method-fusion-coverage` (`9de6c68`), `step/04-adopted-rv-match-plots` (`fa0578c`) |
+| 4 | `step/11-epoch-ccf-matrix-cli` (`be9b0a3`), `step/05a-short-pair-calibration` (`47caa15`) |
+| 5 | `step/02b-trust-weights-stack` (`f0400f9`), `step/07-sb2-search` (`7129124`), `step/08-external-rv-full` (`fec76dc`) |
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -627,6 +638,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | (P5 launch) | TRUST-02B + SB2-07 + LIT-08-FULL | — | parallel worktrees |
 | 2026-08-02 | TRUST-02B | **done** | `f0400f9` on `step/02b-trust-weights-stack` | opt-in trust IVW; default off; campaign A/B residual |
 | 2026-08-02 | SB2-07 | **done** (partial) | `7129124` on `step/07-sb2-search` | WIP tracked; BiGauss APIs fixed; NSS/pipeline fuse residual |
+| 2026-08-02 | LIT-08-FULL | **done PARTIAL** | `fec76dc` on `step/08-external-rv-full` | LAMOST/RAVE+overlay; n_lit=4 blocker |
 
 ---
 
