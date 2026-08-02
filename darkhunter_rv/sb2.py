@@ -476,6 +476,88 @@ def sb2_candidate_from_score(
     return True
 
 
+
+def order_mask_ccf_dict_to_records(order_mask_ccf: dict[int, dict]) -> list[OrderCcfRecord]:
+    """
+    Convert pipeline ``order_mask_ccf`` (per-order vel/ccf plot dict) to ``OrderCcfRecord``.
+
+    Pipeline velocities are already bias-corrected; ``b0_kms`` is set to 0.
+    """
+    records: list[OrderCcfRecord] = []
+    for ord_num, rec in sorted(order_mask_ccf.items(), key=lambda kv: int(kv[0])):
+        vel = np.asarray(rec.get("vel"), float)
+        ccf = np.asarray(rec.get("ccf"), float)
+        if vel.size < 5 or ccf.size != vel.size:
+            continue
+        peak = float(rec.get("peak_vel", np.nan))
+        label = str(rec.get("label", ord_num))
+        records.append(
+            OrderCcfRecord(
+                order=int(ord_num),
+                chunk_key=label,
+                vel_kms=vel,
+                ccf=ccf,
+                b0_kms=0.0,
+                peak_snr=float("nan"),
+                rv_kms=peak,
+            )
+        )
+    return records
+
+
+def score_sb2_from_pipeline_order_ccfs(
+    order_mask_ccf: dict[int, dict],
+    *,
+    rv_primary_seed: float | None = None,
+    delta_chi2_min: float | None = None,
+    cfg: EstimatorConfig | None = None,
+) -> tuple[bool, BiGaussCcfResult | None]:
+    """
+    Low-cost SB2 score from pipeline-collected mask CCFs (no re-CCF).
+
+    Returns ``(sb2_candidate, bi_gauss)``; ``bi_gauss`` is None when too few orders.
+    """
+    records = order_mask_ccf_dict_to_records(order_mask_ccf)
+    if not records:
+        return False, None
+    vel_med, ccf_med = median_ccf_across_orders(records)
+    if int(np.sum(np.isfinite(ccf_med))) < 10:
+        return False, None
+    bi = score_sb2_from_median_ccf(
+        vel_med, ccf_med, cfg=cfg, rv_primary_seed=rv_primary_seed
+    )
+    return sb2_candidate_from_score(bi, delta_chi2_min=delta_chi2_min), bi
+
+
+def sb2_exposure_diagnostics_columns(
+    candidate: bool,
+    bi: BiGaussCcfResult | None,
+) -> dict[str, Any]:
+    """Exposure-level columns fused into every ``*_diagnostics.csv`` row."""
+    out: dict[str, Any] = {
+        "sb2_candidate": bool(candidate),
+        "sb2_rv1_kms": float("nan"),
+        "sb2_rv2_kms": float("nan"),
+        "sb2_rv1_err_kms": float("nan"),
+        "sb2_rv2_err_kms": float("nan"),
+        "sb2_delta_chi2": float("nan"),
+        "sb2_secondary_peak_snr": float("nan"),
+        "sb2_rv2_method": "",
+    }
+    if bi is None:
+        return out
+    out["sb2_rv1_kms"] = float(bi.rv1_kms) if np.isfinite(bi.rv1_kms) else float("nan")
+    out["sb2_rv2_kms"] = float(bi.rv2_kms) if np.isfinite(bi.rv2_kms) else float("nan")
+    out["sb2_rv1_err_kms"] = float(bi.rv1_err_kms) if np.isfinite(bi.rv1_err_kms) else float("nan")
+    out["sb2_rv2_err_kms"] = float(bi.rv2_err_kms) if np.isfinite(bi.rv2_err_kms) else float("nan")
+    out["sb2_delta_chi2"] = float(bi.delta_chi2) if np.isfinite(bi.delta_chi2) else float("nan")
+    out["sb2_secondary_peak_snr"] = (
+        float(bi.secondary_peak_snr) if np.isfinite(bi.secondary_peak_snr) else float("nan")
+    )
+    out["sb2_rv2_method"] = str(bi.rv2_method or "")
+    return out
+
+
 def analyze_epoch_ccf(
     spectrum_path: str | Path,
     spec_data: dict,

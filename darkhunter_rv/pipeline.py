@@ -25,6 +25,7 @@ from .strong_lines import (
     strong_line_passes_inclusion,
 )
 from darkhunter_rv.summary_paths import is_primary_epoch_spectrum_name
+from darkhunter_rv.sb2 import score_sb2_from_pipeline_order_ccfs, sb2_exposure_diagnostics_columns
 
 logger = logging.getLogger(__name__)
 
@@ -1802,6 +1803,30 @@ def process_spectrum(
                 mean_err,
             )
 
+    # SB2 fuse: reuse already-computed mask CCFs (opt-out via --no-sb2-score).
+    sb2_cols: dict | None = None
+    if (
+        diagnostics_rows
+        and order_mask_ccf
+        and not bool(getattr(args, "no_sb2_score", False))
+    ):
+        seed = float(mean_rv) if np.isfinite(mean_rv) else None
+        try:
+            cand, bi = score_sb2_from_pipeline_order_ccfs(
+                order_mask_ccf, rv_primary_seed=seed
+            )
+            sb2_cols = sb2_exposure_diagnostics_columns(cand, bi)
+            logger.info(
+                "SB2 score sb2_candidate=%s delta_chi2=%s rv1=%s rv2=%s",
+                sb2_cols.get("sb2_candidate"),
+                sb2_cols.get("sb2_delta_chi2"),
+                sb2_cols.get("sb2_rv1_kms"),
+                sb2_cols.get("sb2_rv2_kms"),
+            )
+        except Exception as exc:
+            logger.warning("SB2 score failed: %s", exc)
+            sb2_cols = None
+
     # Fill residual/scatter diagnostics + exposure stack metadata
     if diagnostics_rows:
         chunk_scatter = (
@@ -1845,6 +1870,8 @@ def process_spectrum(
             else:
                 row["stack_weight"] = float("nan")
             row["trust_weights_enabled"] = bool(trust_enabled)
+            if sb2_cols is not None:
+                row.update(sb2_cols)
 
 
     # Routine adopted-RV match figure (--plots and --plots-focus); no outlier threshold.
@@ -1988,6 +2015,12 @@ def main(argv: list[str] | None = None) -> None:
         "--hb-rv-fallback",
         action="store_true",
         help="If primary exposure RV is unusable, use Hβ-only RV as fallback (opt-in)",
+    )
+    parser.add_argument(
+        "--no-sb2-score",
+        action="store_true",
+        help="Skip fusing sb2_candidate / primary-secondary RV columns into *_diagnostics.csv "
+        "(default: score from already-computed mask CCFs when available)",
     )
     parser.add_argument("--no-bias", action="store_true")
     parser.add_argument("--force-gaia", action="store_true")

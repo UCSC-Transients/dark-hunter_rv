@@ -23,9 +23,12 @@ from darkhunter_rv.sb2 import (
     flux_fraction_components,
     load_star_context,
     median_ccf_across_orders,
+    order_mask_ccf_dict_to_records,
     parse_pipeline_rvs_from_summary,
     sb2_candidate_from_score,
+    sb2_exposure_diagnostics_columns,
     score_sb2_from_median_ccf,
+    score_sb2_from_pipeline_order_ccfs,
 )
 
 STAR = 77413727493690112
@@ -105,6 +108,35 @@ def test_sb2_candidate_gate():
     assert sb2_candidate_from_score(bi, delta_chi2_min=5.0)
     assert not sb2_candidate_from_score(bi, delta_chi2_min=20.0)
 
+
+
+
+def test_score_sb2_from_pipeline_order_ccfs_fuse_cols():
+    """Pipeline order_mask_ccf dict → candidate + diagnostics columns."""
+    vel, ccf = _double_gaussian_ccf()
+    order_mask_ccf = {
+        10: {"vel": vel, "ccf": ccf, "peak_vel": -10.0, "label": "10"},
+        11: {"vel": vel, "ccf": ccf * 0.98, "peak_vel": -9.5, "label": "11"},
+    }
+    recs = order_mask_ccf_dict_to_records(order_mask_ccf)
+    assert len(recs) == 2
+    cand, bi = score_sb2_from_pipeline_order_ccfs(order_mask_ccf, rv_primary_seed=-10.0)
+    assert bi is not None and bi.fit_ok
+    assert cand is True
+    cols = sb2_exposure_diagnostics_columns(cand, bi)
+    assert cols["sb2_candidate"] is True
+    assert abs(cols["sb2_rv1_kms"] - (-10.0)) < 3.0
+    assert abs(cols["sb2_rv2_kms"] - 25.0) < 3.0
+    assert cols["sb2_delta_chi2"] > 2.0
+
+
+def test_score_sb2_from_pipeline_order_ccfs_empty():
+    cand, bi = score_sb2_from_pipeline_order_ccfs({})
+    assert cand is False
+    assert bi is None
+    cols = sb2_exposure_diagnostics_columns(False, None)
+    assert cols["sb2_candidate"] is False
+    assert cols["sb2_rv2_method"] == ""
 
 def test_vel_prior_sigma_fixed():
     assert _vel_prior_sigma(0.3, rv_prior_sigma_kms=1.0) == pytest.approx(1.0)

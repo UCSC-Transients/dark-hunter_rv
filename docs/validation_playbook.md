@@ -96,11 +96,22 @@
 
 ## SB2 search (step 07)
 
-Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit. **Not** fused into pipeline `*_diagnostics.csv` yet.
+Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit.
 
-- Per-star search: `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
+- **Pipeline fuse (default when mask CCF runs):** `process_spectrum` median-stacks already-computed `order_mask_ccf` and writes exposure-level `sb2_candidate`, `sb2_rv1_kms`, `sb2_rv2_kms`, `sb2_delta_chi2`, … on every `*_diagnostics.csv` row. Opt out: `--no-sb2-score`.
+- Per-star search (full report / template fit): `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
   - Outputs: `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, …), `sb2_orders.csv`, `sb2_report.json`; on detect/`--force-fit`: `sb2_fit.json` + separated spectra.
 - Fit diagnostics: `python -m validation.sb2_fit_diagnostics_report --sb2-dir validation_output/sb2_<id>`
 - Optional SB2 orbit (07c): `python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_<id>` (uses `darkhunter_rv.sb2_rv_fit`; single-lined Keplerian fitter unchanged).
 - Unit tests: `python -m pytest tests/test_sb2.py tests/test_sb2_rv_fit.py tests/test_plot_sb2_decomposition_orders.py -m "not slow"`
-- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag. Cohort fraction vs Gaia NSS SB2 still open.
+- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag.
+
+### Gaia NSS cohort fraction table (recipe; full table TODO)
+
+Defer full automated table until NSS dump / ADQL access is wired. Recipe:
+
+1. Cohort diagnostics: glob pipeline `output/Gaia_DR3_*_diagnostics.csv` (or campaign out-dir). Per exposure take any row’s `sb2_candidate` (exposure-level; identical on all rows).
+2. Build `source_id` list from filenames (`Gaia_DR3_<id>_…`).
+3. Join to Gaia DR3 NSS SB2 / two-body solutions (`gaiadr3.nss_two_body_orbit` or local dump) on `source_id`.
+4. Emit `validation_output/sb2_nss_cohort/fraction_table.csv` with columns e.g. `n_exposures`, `n_flagged`, `n_nss_sb2`, `frac_flagged_among_nss`, `frac_flagged_among_non_nss` (FP proxy).
+5. **TODO:** ship `validation/sb2_nss_cohort_report.py` + cached NSS stub when catalog access ready; do not block pipeline fuse on this.
