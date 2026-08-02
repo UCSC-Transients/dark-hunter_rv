@@ -1386,6 +1386,9 @@ def process_spectrum(
                     rv_kms=float(rv_try),
                     err_kms=float(err_try),
                     bundle=hb_try,
+                    flux=f_raw,
+                    eflux=e_raw,
+                    wave_native=w_raw,
                 )
                 ok_inc, reason_inc = strong_line_passes_inclusion(metrics, inclusion_cfg)
                 score = float(err_try) if np.isfinite(err_try) and err_try > 0 else 50.0

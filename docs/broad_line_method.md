@@ -29,7 +29,7 @@ Order in `strong_line_rests_for_teff` / `product_strong_line_rests`:
 | gate | default |
 |------|--------:|
 | min depth | 0.05 |
-| min S/N (depth × continuum S/N) | 3.0 |
+| min S/N (flux/eflux median in continuum wings near the line) | 8.0 |
 | width (Voigt σ → km/s) | 3–250 |
 | max formal err | 40 km/s |
 | max telluric fraction in ±40 Å | 0.08 |
@@ -53,8 +53,9 @@ offset — comparable across lines. It is not S/N.
 w = Q_{\mathrm{line}} \times (\mathrm{S/N}_{\mathrm{at\,line}})^{2}
 \]
 
-S/N at the line is per-exposure (`strong_line_fit_metrics` → `snr`). Formal fit error is
-not used as the quality term.
+S/N at the line is per-exposure continuum ``median(flux/eflux)`` in the wings within
+±25 Å of the rest wavelength (excluding the core). That tracks **instrument sensitivity
+and stellar color** at each line; normalized-flux scatter is only a fallback.
 
 Combined RV → one `strong_lines` row (`qc_reason=ivw_n=…`).
 

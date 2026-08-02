@@ -45,7 +45,7 @@ class StrongLineInclusionConfig:
 
     min_depth: float = 0.05
     max_err_kms: float = 40.0
-    min_snr: float = 3.0
+    min_snr: float = 8.0  # continuum flux/eflux near the line
     min_width_kms: float = 3.0
     max_width_kms: float = 250.0
     max_abs_rv_kms: float = 400.0
@@ -85,8 +85,56 @@ def local_core_depth(wave: np.ndarray, flux_norm: np.ndarray, rest: float) -> fl
     return float(1.0 - np.nanmin(ff[core]) / cont)
 
 
+def local_snr_near_line(
+    wave: np.ndarray,
+    flux: np.ndarray,
+    eflux: np.ndarray,
+    rest: float,
+    *,
+    half_window_a: float = 25.0,
+    core_half_a: float = 4.5,
+) -> float:
+    """
+    Continuum S/N **near** ``rest``: median(flux / eflux) in the local wings.
+
+    Uses raw (or blaze-corrected) flux and uncertainty in ±``half_window_a`` Å,
+    excluding ±``core_half_a`` Å about the line. This tracks instrument sensitivity
+    and stellar SED at that wavelength — both vary strongly across the echellogram
+    and across stars of different color.
+    """
+    w = np.asarray(wave, float)
+    f = np.asarray(flux, float)
+    e = np.asarray(eflux, float)
+    if w.size != f.size or w.size != e.size or w.size < 20:
+        return float("nan")
+    m = (
+        (w >= rest - half_window_a)
+        & (w <= rest + half_window_a)
+        & np.isfinite(f)
+        & np.isfinite(e)
+        & (e > 0)
+        & (f > 0)
+    )
+    if int(np.sum(m)) < 20:
+        return float("nan")
+    ww, ff, ee = w[m], f[m], e[m]
+    wing = ~((ww >= rest - core_half_a) & (ww <= rest + core_half_a))
+    if int(np.sum(wing)) < 10:
+        return float("nan")
+    snr_pix = ff[wing] / ee[wing]
+    snr_pix = snr_pix[np.isfinite(snr_pix) & (snr_pix > 0)]
+    if snr_pix.size < 8:
+        return float("nan")
+    return float(np.nanmedian(snr_pix))
+
+
 def local_continuum_snr(wave: np.ndarray, flux_norm: np.ndarray, rest: float) -> float:
-    """Rough S/N from continuum wings: 1 / rms(flux−1) in ±25 Å excluding core."""
+    """
+    Legacy normalized-flux scatter S/N (1/rms about continuum).
+
+    Prefer :func:`local_snr_near_line` with flux/eflux for weighting — normalized
+    spectra erase absolute sensitivity and stellar color.
+    """
     w = np.asarray(wave, float)
     f = np.asarray(flux_norm, float)
     m = (w >= rest - 25.0) & (w <= rest + 25.0) & np.isfinite(f)
@@ -131,17 +179,36 @@ def strong_line_fit_metrics(
     rv_kms: float,
     err_kms: float,
     bundle: Mapping | None = None,
+    flux: np.ndarray | None = None,
+    eflux: np.ndarray | None = None,
+    wave_native: np.ndarray | None = None,
 ) -> dict[str, float]:
+    """
+    Line metrics for inclusion and weighting.
+
+    ``snr`` is continuum S/N **near the line** from flux/eflux when provided
+    (:func:`local_snr_near_line`); otherwise falls back to normalized-flux scatter.
+    """
     depth = local_core_depth(wave, flux_norm, rest)
-    snr_cont = local_continuum_snr(wave, flux_norm, rest)
-    # Line S/N proxy: depth × continuum S/N (absorptions need both depth and quiet continuum).
-    snr = float(depth * snr_cont) if np.isfinite(depth) and np.isfinite(snr_cont) else float("nan")
+    snr_norm = local_continuum_snr(wave, flux_norm, rest)
+    snr_flux = float("nan")
+    if flux is not None and eflux is not None:
+        w_use = wave_native if wave_native is not None else wave
+        snr_flux = local_snr_near_line(w_use, flux, eflux, rest)
+    # Prefer photon/instrument S/N at the line; normalized scatter is a last resort.
+    if np.isfinite(snr_flux) and snr_flux > 0:
+        snr = float(snr_flux)
+    elif np.isfinite(depth) and np.isfinite(snr_norm):
+        snr = float(depth * snr_norm)
+    else:
+        snr = float("nan")
     width = fit_width_kms(bundle or {}, rest) if bundle is not None else float("nan")
     tfrac = telluric_fraction_near(wave, rest)
     return {
         "depth": float(depth) if np.isfinite(depth) else float("nan"),
         "snr": snr,
-        "continuum_snr": float(snr_cont) if np.isfinite(snr_cont) else float("nan"),
+        "snr_near_line": float(snr_flux) if np.isfinite(snr_flux) else float("nan"),
+        "continuum_snr": float(snr_norm) if np.isfinite(snr_norm) else float("nan"),
         "width_kms": float(width) if np.isfinite(width) else float("nan"),
         "err_kms": float(err_kms) if np.isfinite(err_kms) else float("nan"),
         "rv_kms": float(rv_kms) if np.isfinite(rv_kms) else float("nan"),

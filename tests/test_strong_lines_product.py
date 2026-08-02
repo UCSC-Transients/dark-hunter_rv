@@ -40,34 +40,61 @@ def test_line_uses_broad_profile():
 
 
 def test_inclusion_rejects_shallow_low_snr_narrow():
-    cfg = StrongLineInclusionConfig(min_depth=0.05, min_snr=3.0, min_width_kms=3.0)
+    cfg = StrongLineInclusionConfig(min_depth=0.05, min_snr=8.0, min_width_kms=3.0)
     ok, reason = strong_line_passes_inclusion(
-        {"depth": 0.01, "snr": 10.0, "width_kms": 10.0, "err_kms": 2.0, "rv_kms": 5.0, "telluric_frac": 0.0},
+        {"depth": 0.01, "snr": 20.0, "width_kms": 10.0, "err_kms": 2.0, "rv_kms": 5.0, "telluric_frac": 0.0},
         cfg,
     )
     assert not ok and reason == "shallow_depth"
+    ok_snr, reason_snr = strong_line_passes_inclusion(
+        {"depth": 0.4, "snr": 2.0, "width_kms": 12.0, "err_kms": 2.0, "rv_kms": 5.0, "telluric_frac": 0.0},
+        cfg,
+    )
+    assert not ok_snr and reason_snr == "low_snr"
     ok4, _ = strong_line_passes_inclusion(
-        {"depth": 0.4, "snr": 10.0, "width_kms": 12.0, "err_kms": 2.0, "rv_kms": 5.0, "telluric_frac": 0.0},
+        {"depth": 0.4, "snr": 20.0, "width_kms": 12.0, "err_kms": 2.0, "rv_kms": 5.0, "telluric_frac": 0.0},
         cfg,
     )
     assert ok4
 
 
-def test_fit_metrics_depth_and_snr():
+def test_local_snr_near_line_uses_flux_eflux_and_varies_with_level():
+    from darkhunter_rv.strong_lines import local_snr_near_line
+
     rest = 5183.6
     w = np.linspace(rest - 30, rest + 30, 400)
-    f = np.ones_like(w) - 0.35 * np.exp(-0.5 * ((w - rest) / 0.9) ** 2)
-    f += np.random.default_rng(0).normal(0.0, 0.01, size=f.shape)
+    # Bright continuum → high S/N; faint → low (same relative noise fraction would cancel —
+    # here eflux fixed so S/N tracks flux level / color / sensitivity).
+    f_bright = np.full_like(w, 1000.0)
+    f_faint = np.full_like(w, 100.0)
+    e = np.full_like(w, 10.0)
+    snr_b = local_snr_near_line(w, f_bright, e, rest)
+    snr_f = local_snr_near_line(w, f_faint, e, rest)
+    assert snr_b == 100.0
+    assert snr_f == 10.0
+    assert snr_b > snr_f
+
+
+def test_fit_metrics_prefer_flux_snr_near_line():
+    rest = 5183.6
+    w = np.linspace(rest - 30, rest + 30, 400)
+    f_norm = np.ones_like(w) - 0.35 * np.exp(-0.5 * ((w - rest) / 0.9) ** 2)
+    f_raw = np.full_like(w, 500.0)
+    e_raw = np.full_like(w, 10.0)
     m = strong_line_fit_metrics(
         wave=w,
-        flux_norm=f,
+        flux_norm=f_norm,
         rest=rest,
         rv_kms=1.0,
         err_kms=2.0,
         bundle={"hb_joint_fit_params": [0.3, 0.1, rest, 0.4, 0.2, 0.5, 1.0, 0.0]},
+        flux=f_raw,
+        eflux=e_raw,
+        wave_native=w,
     )
     assert m["depth"] > 0.2
-    assert m["snr"] > 3.0
+    assert abs(m["snr"] - 50.0) < 1e-6
+    assert abs(m["snr_near_line"] - 50.0) < 1e-6
 
 
 def test_quality_estimated_only_after_debias():
