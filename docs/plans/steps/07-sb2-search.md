@@ -1,7 +1,7 @@
 ---
 step_id: 07-sb2-search
 phase: D
-status: pending
+status: in_progress
 github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/44
 branches:
   - step/07a-sb2-detection
@@ -37,29 +37,42 @@ Detect and report double-lined systems where appropriate; optional two-lined orb
 
 ### 07a (`step/07a-sb2-detection`)
 
-- [ ] Prototype dual-Gaussian CCF fit or bisector metric in `rv_core.py`
-- [ ] Per-chunk SB2 scores in diagnostics
+- [x] Prototype dual-Gaussian CCF fit or bisector metric in `rv_core.py`
+  - Implemented as `BiGaussCcfResult` / `estimate_ccf_bi_gauss_from_arrays` / `estimate_ccf_secondary_seeded` in `ccf_rv_estimators.py`; scored via `darkhunter_rv.sb2` (median-CCF gate). Not inlined into `rv_core.py`.
+- [x] Per-chunk SB2 scores in diagnostics
+  - Per-order CCF rows in `sb2_orders.csv`; exposure-level bi-Gauss score + `sb2_candidate` in `sb2_epochs.csv` / `sb2_report.json` (validation path, not pipeline `*_diagnostics.csv` yet).
 
 ### 07b (`step/07b-sb2-reporting`)
 
-- [ ] Exposure-level `sb2_candidate` flag + columns in CSV/summary
+- [x] Exposure-level `sb2_candidate` flag + columns in CSV/summary
+  - `python -m validation.sb2_search` writes `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, ...) and `sb2_report.json`.
 - [ ] Validation report: fraction flagged vs Gaia NSS SB2
+  - Still open: no cohort NSS fraction table yet; per-star Gaia metadata loads disk-first in `load_star_context`.
 
 ### 07c (`step/07c-sb2-orbit-optional`, defer if needed)
 
-- [ ] Two-lined Keplerian likelihood sketch or separate module
+- [x] Two-lined Keplerian likelihood sketch or separate module
+  - Kept from WIP: `darkhunter_rv/sb2_rv_fit.py` + `validation/sb2_orbit_fit.py` (independent + joint variants). Optional path; single-lined `fit_apf_rv_keplerian.py` unchanged.
 
 ## Key files
 
-- `darkhunter_rv/rv_core.py`
-- `darkhunter_rv/pipeline.py`
-- `fit_apf_rv_keplerian.py`
+- `darkhunter_rv/ccf_rv_estimators.py` (`BiGaussCcfResult`, seeded secondary)
+- `darkhunter_rv/sb2.py` (detection + template separation)
+- `darkhunter_rv/sb2_rv_fit.py` / `validation/sb2_orbit_fit.py` (optional 07c)
+- `validation/sb2_search.py`, `validation/sb2_fit_diagnostics_report.py`
+- `fit_apf_rv_keplerian.py` (single-lined; unchanged)
 
 ## Commands
 
 ```bash
 cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
-python -m darkhunter_rv.pipeline ... --run-all-methods
+# Per-star SB2 search (mask CCF + optional two-template fit):
+python -m validation.sb2_search \
+  --gaia-id 77413727493690112 \
+  --spec-root /Users/rfoley/darkhunter/rvs/data \
+  --out-dir validation_output/sb2_77413727493690112
+# Optional orbit on sb2_epochs.csv:
+python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_77413727493690112
 ```
 
 ## Acceptance criteria
@@ -80,5 +93,6 @@ python -m darkhunter_rv.pipeline ... --run-all-methods
 
 ## Open decisions
 
-- Spectral decomposition per epoch vs time-series only?
-- 07c in scope for this step or separate future step?
+- Spectral decomposition per epoch vs time-series only? (WIP does multi-epoch template fit + per-epoch separated spectra.)
+- 07c in scope for this step or separate future step? **Kept:** orbit modules tracked; full MCMC into `fit_apf_rv_keplerian.py` still out of scope.
+- Pipeline `*_diagnostics.csv` `sb2_candidate` column vs validation-only CSV: still open for production fuse.

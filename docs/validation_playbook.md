@@ -91,3 +91,14 @@
 - If method offsets are coherent with Teff or mask-line count, use those features in post-hoc method trust regions.
 - If error coverage is under-dispersed, increase systematic floor terms per method/instrument/chunk family.
 - For broad-line stars, use the benchmark recommendation from `docs/broad_line_method.md`.
+
+## SB2 search (step 07)
+
+Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit. **Not** fused into pipeline `*_diagnostics.csv` yet.
+
+- Per-star search: `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
+  - Outputs: `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, …), `sb2_orders.csv`, `sb2_report.json`; on detect/`--force-fit`: `sb2_fit.json` + separated spectra.
+- Fit diagnostics: `python -m validation.sb2_fit_diagnostics_report --sb2-dir validation_output/sb2_<id>`
+- Optional SB2 orbit (07c): `python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_<id>` (uses `darkhunter_rv.sb2_rv_fit`; single-lined Keplerian fitter unchanged).
+- Unit tests: `python -m pytest tests/test_sb2.py tests/test_sb2_rv_fit.py tests/test_plot_sb2_decomposition_orders.py -m "not slow"`
+- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag. Cohort fraction vs Gaia NSS SB2 still open.

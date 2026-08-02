@@ -490,6 +490,387 @@ def estimate_ccf_rv(
     return result
 
 
+
+@dataclass(frozen=True)
+class BiGaussCcfResult:
+    """Two-component CCF fit for SB2 scoring (primary + secondary)."""
+
+    rv1_kms: float
+    rv2_kms: float
+    rv1_err_kms: float
+    rv2_err_kms: float
+    amp1: float
+    amp2: float
+    sigma1: float
+    sigma2: float
+    c0: float
+    delta_chi2: float
+    secondary_peak_snr: float
+    asymmetry: float
+    fit_ok: bool
+    peak_snr: float
+    v_grid_kms: float
+    rv2_method: str = "bi_gauss"
+    exclude_width_kms: float = float("nan")
+
+
+def _failed_bi_gauss(
+    *,
+    peak_snr: float,
+    v_grid_kms: float,
+    asymmetry: float = float("nan"),
+    rv2_method: str = "bi_gauss",
+    exclude_width_kms: float = float("nan"),
+) -> BiGaussCcfResult:
+    nan = float("nan")
+    return BiGaussCcfResult(
+        rv1_kms=nan,
+        rv2_kms=nan,
+        rv1_err_kms=nan,
+        rv2_err_kms=nan,
+        amp1=nan,
+        amp2=nan,
+        sigma1=nan,
+        sigma2=nan,
+        c0=nan,
+        delta_chi2=nan,
+        secondary_peak_snr=nan,
+        asymmetry=asymmetry,
+        fit_ok=False,
+        peak_snr=peak_snr,
+        v_grid_kms=v_grid_kms,
+        rv2_method=rv2_method,
+        exclude_width_kms=exclude_width_kms,
+    )
+
+
+def _ccf_peak_metrics(vel_kms: np.ndarray, ccf: np.ndarray) -> tuple[int, float, float, float]:
+    """Return peak_idx, peak_val, peak_snr, asymmetry on full arrays."""
+    vel_kms = np.asarray(vel_kms, float)
+    ccf = np.asarray(ccf, float)
+    peak_idx = int(np.nanargmax(ccf))
+    peak_val = float(ccf[peak_idx])
+    c_med = float(np.nanmedian(ccf))
+    c_mad = float(np.nanmedian(np.abs(ccf - c_med))) + 1e-12
+    peak_snr = float((peak_val - c_med) / (1.4826 * c_mad))
+    # Local asymmetry around peak for reporting
+    half = min(40, peak_idx, len(ccf) - 1 - peak_idx)
+    if half < 3:
+        asym = float("nan")
+    else:
+        left = ccf[peak_idx - half : peak_idx]
+        right = ccf[peak_idx + 1 : peak_idx + half + 1]
+        n = min(len(left), len(right))
+        if n < 3:
+            asym = float("nan")
+        else:
+            lsum = float(np.nansum(left[-n:]))
+            rsum = float(np.nansum(right[:n]))
+            denom = abs(lsum) + abs(rsum) + 1e-12
+            asym = abs(rsum - lsum) / denom
+    return peak_idx, peak_val, peak_snr, asym
+
+
+def _chi2(y: np.ndarray, model: np.ndarray) -> float:
+    resid = np.asarray(y, float) - np.asarray(model, float)
+    return float(np.nansum(resid * resid))
+
+
+def estimate_ccf_bi_gauss_from_arrays(
+    vel_kms: np.ndarray,
+    ccf: np.ndarray,
+    *,
+    cfg: EstimatorConfig | None = None,
+) -> BiGaussCcfResult:
+    """
+    Fit one- and two-Gaussian models on a CCF velocity grid.
+
+    ``delta_chi2`` is ``chi2_1gauss - chi2_2gauss`` (positive => two-component preferred).
+    Component 1 is the stronger amplitude; component 2 is the secondary.
+    """
+    cfg = cfg or EstimatorConfig()
+    vel = np.asarray(vel_kms, float)
+    y = np.asarray(ccf, float)
+    if vel.size < 10 or y.size != vel.size or not np.any(np.isfinite(y)):
+        return _failed_bi_gauss(peak_snr=float("nan"), v_grid_kms=float("nan"))
+
+    peak_idx, peak_val, peak_snr, asym = _ccf_peak_metrics(vel, y)
+    v_grid = float(vel[peak_idx])
+    v_lo = float(np.nanmin(vel))
+    v_hi = float(np.nanmax(vel))
+    span = float(max(np.ptp(y[np.isfinite(y)]) if np.any(np.isfinite(y)) else 0.0, 1e-9))
+    c0_0 = float(np.nanmedian(y))
+    amp0 = float(max(peak_val - c0_0, span * 0.02, 1e-9))
+    sig0 = float(max(2.0, min(40.0, 0.08 * (v_hi - v_lo))))
+
+    def one_gauss(x, c0p, a1, mu1, s1):
+        return c0p + a1 * np.exp(-0.5 * ((x - mu1) / s1) ** 2)
+
+    def bi_gauss(x, c0p, a1, mu1, s1, a2, mu2, s2):
+        g1 = a1 * np.exp(-0.5 * ((x - mu1) / s1) ** 2)
+        g2 = a2 * np.exp(-0.5 * ((x - mu2) / s2) ** 2)
+        return c0p + g1 + g2
+
+    c_lo = float(np.nanmin(y) - span)
+    c_hi = float(np.nanmax(y) + 0.5 * span)
+    sig_max = min(200.0, max(8.0, v_hi - v_lo))
+    amp_hi = 8.0 * span + abs(c0_0)
+    try:
+        p1, _ = curve_fit(
+            one_gauss,
+            vel,
+            y,
+            p0=[c0_0, amp0, v_grid, sig0],
+            bounds=(
+                [c_lo, 1e-12, v_lo, 0.5],
+                [c_hi, amp_hi, v_hi, sig_max],
+            ),
+            maxfev=12000,
+        )
+        chi1 = _chi2(y, one_gauss(vel, *p1))
+    except Exception:
+        return _failed_bi_gauss(peak_snr=peak_snr, v_grid_kms=v_grid, asymmetry=asym)
+
+    # Seed secondary near residual max away from primary
+    resid = y - one_gauss(vel, *p1)
+    mask_pri = np.abs(vel - float(p1[2])) >= 8.0
+    if np.any(mask_pri) and np.nanmax(resid[mask_pri]) > 0:
+        i2 = int(np.nanargmax(np.where(mask_pri, resid, -np.inf)))
+        mu2_0 = float(vel[i2])
+        a2_0 = float(max(resid[i2], span * 0.05, 1e-9))
+    else:
+        mu2_0 = float(np.clip(v_grid + 12.0, v_lo + 1.0, v_hi - 1.0))
+        a2_0 = 0.35 * amp0
+
+    p0 = [c0_0, 0.7 * amp0, float(p1[2]), float(p1[3]), a2_0, mu2_0, sig0 * 1.1]
+    bounds = (
+        [c_lo, 1e-12, v_lo, 0.5, 1e-12, v_lo, 0.5],
+        [c_hi, amp_hi, v_hi, sig_max, amp_hi, v_hi, sig_max],
+    )
+    try:
+        p2, pcov = curve_fit(bi_gauss, vel, y, p0=p0, bounds=bounds, maxfev=20000)
+    except Exception:
+        return _failed_bi_gauss(peak_snr=peak_snr, v_grid_kms=v_grid, asymmetry=asym)
+
+    c0p, a1, mu1, s1, a2, mu2, s2 = (float(v) for v in p2)
+    chi2 = _chi2(y, bi_gauss(vel, *p2))
+    dchi = float(chi1 - chi2)
+
+    # Order by amplitude: primary = stronger
+    if a2 > a1:
+        a1, a2 = a2, a1
+        mu1, mu2 = mu2, mu1
+        s1, s2 = s2, s1
+        idx1, idx2 = 5, 2
+    else:
+        idx1, idx2 = 2, 5
+
+    e1 = e2 = float("nan")
+    if pcov is not None:
+        perr = np.sqrt(np.maximum(np.diag(pcov), 0.0))
+        if np.isfinite(perr[idx1]):
+            e1 = float(perr[idx1])
+        if np.isfinite(perr[idx2]):
+            e2 = float(perr[idx2])
+
+    # Secondary peak S/N vs continuum MAD
+    c_med = float(np.nanmedian(y))
+    c_mad = float(np.nanmedian(np.abs(y - c_med))) + 1e-12
+    snr2 = float(a2 / (1.4826 * c_mad))
+
+    ok = bool(a1 > 1e-11 and a2 > 1e-11 and np.isfinite(dchi))
+    return BiGaussCcfResult(
+        rv1_kms=mu1,
+        rv2_kms=mu2,
+        rv1_err_kms=e1,
+        rv2_err_kms=e2,
+        amp1=a1,
+        amp2=a2,
+        sigma1=s1,
+        sigma2=s2,
+        c0=c0p,
+        delta_chi2=dchi,
+        secondary_peak_snr=snr2,
+        asymmetry=asym,
+        fit_ok=ok,
+        peak_snr=peak_snr,
+        v_grid_kms=v_grid,
+        rv2_method="bi_gauss",
+        exclude_width_kms=float("nan"),
+    )
+
+
+def estimate_ccf_secondary_seeded(
+    vel_kms: np.ndarray,
+    ccf: np.ndarray,
+    rv_primary_seed: float,
+    *,
+    cfg: EstimatorConfig | None = None,
+    exclude_width_kms: float = 12.0,
+    max_secondary_sep_kms: float = 50.0,
+) -> BiGaussCcfResult:
+    """
+    Primary-seeded secondary search: blank the primary core, find residual peak,
+    then fit a two-Gaussian model seeded at (primary, secondary).
+
+    Used when free bi-Gaussian under-fits a weak secondary near a strong primary.
+    """
+    cfg = cfg or EstimatorConfig()
+    vel = np.asarray(vel_kms, float)
+    y = np.asarray(ccf, float)
+    excl = float(exclude_width_kms)
+    max_sep = float(max_secondary_sep_kms)
+    peak_idx, peak_val, peak_snr, asym = _ccf_peak_metrics(vel, y)
+    v_grid = float(vel[peak_idx])
+    if not np.isfinite(rv_primary_seed) or vel.size < 10:
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+
+    mu1_0 = float(rv_primary_seed)
+    # Residual after blanking primary core for secondary hunt
+    search = np.ones(vel.shape, dtype=bool)
+    search &= np.abs(vel - mu1_0) >= excl
+    search &= np.abs(vel - mu1_0) <= max_sep
+    if not np.any(search):
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+
+    # Continuum-subtracted CCF for peak pick
+    c0_0 = float(np.nanmedian(y))
+    y_sub = y - c0_0
+    y_search = np.where(search, y_sub, -np.inf)
+    i2 = int(np.nanargmax(y_search))
+    if not np.isfinite(y_search[i2]) or y_search[i2] <= 0:
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+    mu2_0 = float(vel[i2])
+
+    v_lo = float(np.nanmin(vel))
+    v_hi = float(np.nanmax(vel))
+    span = float(max(np.ptp(y[np.isfinite(y)]) if np.any(np.isfinite(y)) else 0.0, 1e-9))
+    amp0 = float(max(float(np.nanmax(y)) - c0_0, span * 0.02, 1e-9))
+    a2_0 = float(max(y_sub[i2], span * 0.05, 1e-9))
+    sig0 = float(max(2.0, min(40.0, 0.08 * (v_hi - v_lo))))
+    c_lo = float(np.nanmin(y) - span)
+    c_hi = float(np.nanmax(y) + 0.5 * span)
+    sig_max = min(200.0, max(8.0, v_hi - v_lo))
+    amp_hi = 8.0 * span + abs(c0_0)
+
+    def one_gauss(x, c0p, a1, mu1, s1):
+        return c0p + a1 * np.exp(-0.5 * ((x - mu1) / s1) ** 2)
+
+    def bi_gauss(x, c0p, a1, mu1, s1, a2, mu2, s2):
+        return (
+            c0p
+            + a1 * np.exp(-0.5 * ((x - mu1) / s1) ** 2)
+            + a2 * np.exp(-0.5 * ((x - mu2) / s2) ** 2)
+        )
+
+    try:
+        p1, _ = curve_fit(
+            one_gauss,
+            vel,
+            y,
+            p0=[c0_0, amp0, mu1_0, sig0],
+            bounds=(
+                [c_lo, 1e-12, v_lo, 0.5],
+                [c_hi, amp_hi, v_hi, sig_max],
+            ),
+            maxfev=12000,
+        )
+        chi1 = _chi2(y, one_gauss(vel, *p1))
+    except Exception:
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+
+    # Keep primary near seed; secondary near residual peak
+    p0 = [c0_0, 0.75 * amp0, mu1_0, sig0, a2_0, mu2_0, sig0 * 1.1]
+    # Soft bounds: primary within exclude_width of seed; secondary in sep window
+    mu1_lo = max(v_lo, mu1_0 - excl)
+    mu1_hi = min(v_hi, mu1_0 + excl)
+    mu2_lo = max(v_lo, mu1_0 - max_sep)
+    mu2_hi = min(v_hi, mu1_0 + max_sep)
+    if mu1_lo >= mu1_hi - 1e-6 or mu2_lo >= mu2_hi - 1e-6:
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+    bounds = (
+        [c_lo, 1e-12, mu1_lo, 0.5, 1e-12, mu2_lo, 0.5],
+        [c_hi, amp_hi, mu1_hi, sig_max, amp_hi, mu2_hi, sig_max],
+    )
+    try:
+        p2, pcov = curve_fit(bi_gauss, vel, y, p0=p0, bounds=bounds, maxfev=20000)
+    except Exception:
+        return _failed_bi_gauss(
+            peak_snr=peak_snr,
+            v_grid_kms=v_grid,
+            asymmetry=asym,
+            rv2_method="seeded_peak",
+            exclude_width_kms=excl,
+        )
+
+    c0p, a1, mu1, s1, a2, mu2, s2 = (float(v) for v in p2)
+    chi2 = _chi2(y, bi_gauss(vel, *p2))
+    dchi = float(chi1 - chi2)
+
+    e1 = e2 = float("nan")
+    if pcov is not None:
+        perr = np.sqrt(np.maximum(np.diag(pcov), 0.0))
+        if np.isfinite(perr[2]):
+            e1 = float(perr[2])
+        if np.isfinite(perr[5]):
+            e2 = float(perr[5])
+
+    c_med = float(np.nanmedian(y))
+    c_mad = float(np.nanmedian(np.abs(y - c_med))) + 1e-12
+    snr2 = float(a2 / (1.4826 * c_mad))
+    ok = bool(a1 > 1e-11 and a2 > 1e-11 and np.isfinite(dchi) and abs(mu1 - mu2) >= 1.0)
+
+    return BiGaussCcfResult(
+        rv1_kms=mu1,
+        rv2_kms=mu2,
+        rv1_err_kms=e1,
+        rv2_err_kms=e2,
+        amp1=a1,
+        amp2=a2,
+        sigma1=s1,
+        sigma2=s2,
+        c0=c0p,
+        delta_chi2=dchi,
+        secondary_peak_snr=snr2,
+        asymmetry=asym,
+        fit_ok=ok,
+        peak_snr=peak_snr,
+        v_grid_kms=v_grid,
+        rv2_method="seeded_peak",
+        exclude_width_kms=excl,
+    )
+
+
 def estimate_all_ccf_rvs(
     slice_: CcfFitSlice,
     *,
