@@ -4,7 +4,9 @@
 
 **Multi-agent runs:** give the orchestrator agent [ORCHESTRATOR.md](ORCHESTRATOR.md) as the sole entrypoint (links every step, command, and launch card).
 
-GitHub **issues** and **branches** track shared progress.
+**Program status:** RV orchestrator code DoD is **met** — see [ORCHESTRATOR.md](ORCHESTRATOR.md) §9 and [HUMAN_GATES.md](HUMAN_GATES.md). Do not reopen Phase 1–5 cards unless the human opens new scope. Remaining RV residual: bias rebuild + ziggy ([#57](https://github.com/UCSC-Transients/dark-hunter_rv/issues/57)).
+
+GitHub **issues** and **branches** track shared progress. Tracker: [INDEX.md](INDEX.md).
 
 ## A. Start a step
 
@@ -23,18 +25,19 @@ GitHub **issues** and **branches** track shared progress.
 
 ## B. Finish a step (merge PR)
 
-1. **Step md:** `status: completed`; check boxes; record issue # and merged branch (both `docs/plans/steps/` and `.cursor/plans/rv-pipeline/steps/`).
-2. **Master plan** `.cursor/plans/rv_pipeline_master_plan_8447f2cd.plan.md`:
+1. **Step md:** `status: completed`; check boxes; record issue # and merged branch (both `docs/plans/steps/` and `.cursor/plans/rv-pipeline/steps/` if present).
+2. **Master plan** `.cursor/plans/rv_pipeline_master_plan_8447f2cd.plan.md` (if still used):
    - Set matching frontmatter `todos[].status: completed`
    - Update phase / “What has been implemented” if needed
-3. **INDEX.md** (repo + `.cursor/plans/rv-pipeline/`): update status, issue #, branch, merge date.
+3. **INDEX.md** (repo + `.cursor/plans/rv-pipeline/` if mirrored): update status, issue #, branch, merge date.
 4. **Legacy plans** (listed in step `related_legacy_plans`): mark relevant todos or add “superseded by step NN”.
 5. **Repo docs** (`repo_docs_to_update` in step): add commands only when user-facing behavior changes.
 6. Close GitHub issue with merge summary.
+7. If a **human gate** changes (defaults, ziggy, lit waive), update [HUMAN_GATES.md](HUMAN_GATES.md) and [ORCHESTRATOR.md](ORCHESTRATOR.md) NEXT / §9.
 
 ## C. Branch convention
 
-- Prefix: `step/`
+- Prefix: `step/` (or `phase/` for multi-step soft residuals)
 - One logical step per PR; sub-branches `step/02a-...`, `step/02b-...` for large steps
 - PR title: `step/NN: <title>`
 - PR body: `Closes #<issue>` + plan path `docs/plans/steps/NN-<slug>.md`
@@ -42,6 +45,8 @@ GitHub **issues** and **branches** track shared progress.
 ## D. Cursor session
 
 Attach `@docs/plans/steps/NN-<slug>.md` (preview) or `@.cursor/plans/rv-pipeline/steps/NN-<slug>.md` (canonical local).
+
+For orchestrator resume: `@docs/plans/ORCHESTRATOR.md` + `@docs/plans/HUMAN_GATES.md`.
 
 ## E. Propagation map (legacy plans on completion)
 

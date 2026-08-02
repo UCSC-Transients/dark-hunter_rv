@@ -1,10 +1,11 @@
 ---
 step_id: 05-short-pair-epoch-ccf
 phase: E
-status: in_progress
-github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/42
+status: complete
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/42
 branches:
   - step/05a-short-pair-calibration
+merged: 2026-08-02 via #98 → #101
 depends_on: [11-epoch-ccf-matrix]
 blocks: []
 master_todo_id: short-pair-epoch-ccf

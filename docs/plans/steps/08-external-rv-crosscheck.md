@@ -1,10 +1,11 @@
 ---
 step_id: 08-external-rv-crosscheck
 phase: E
-status: complete  # full CLI+report shipped; ≥10-star APF overlap still data-limited (documented PARTIAL)
-github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/45
+status: complete  # n_stars=8 waived (HUMAN_GATES); ≥10 needs spectra ingest
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/45
 branches:
   - step/08-external-rv-crosscheck
+merged: 2026-08-02 via #96/#104; issue closed under HUMAN_GATES
 depends_on: [00-literature-rv-master]
 # soft: 07-sb2-search (required for 08-full only; lite OK pre-SB2)
 blocks: []

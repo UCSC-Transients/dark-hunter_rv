@@ -1,6 +1,6 @@
 # Human decision checklist (post soft-residuals)
 
-Program code lanes for mask / template / strong / fusion / epoch-CCF / SB2 tooling are on `main` through [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106).
+Program code lanes for mask / template / strong / fusion / epoch-CCF / SB2 tooling are on `main` through [#106](https://github.com/UCSC-Transients/dark-hunter_rv/pull/106). Docs closeout: [#107](https://github.com/UCSC-Transients/dark-hunter_rv/pull/107).
 
 **Applied defaults (2026-08-02, post-#106 continue):**
 

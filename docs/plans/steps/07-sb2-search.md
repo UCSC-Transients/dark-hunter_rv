@@ -1,12 +1,13 @@
 ---
 step_id: 07-sb2-search
 phase: D
-status: in_progress
-github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/44
+status: complete  # tooling+NSS on main; optional full output/ refit for flag rates
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/44
 branches:
   - step/07a-sb2-detection
   - step/07b-sb2-reporting
   - step/07c-sb2-orbit-optional
+merged: 2026-08-02 via #99/#103/#105; issue closed under HUMAN_GATES
 depends_on: [06-strong-line-line-list]
 blocks: []
 master_todo_id: sb2-search
