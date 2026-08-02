@@ -626,6 +626,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | SHORTPAIR-05A | **done** | `47caa15` on `step/05a-short-pair-calibration` | σ-scale≈1.28 MAD; #42 commented |
 | 2026-08-02 | (P5 launch) | TRUST-02B + SB2-07 + LIT-08-FULL | — | parallel worktrees |
 | 2026-08-02 | TRUST-02B | **done** | `f0400f9` on `step/02b-trust-weights-stack` | opt-in trust IVW; default off; campaign A/B residual |
+| 2026-08-02 | SB2-07 | **done** (partial) | `7129124` on `step/07-sb2-search` | WIP tracked; BiGauss APIs fixed; NSS/pipeline fuse residual |
 
 ---
 
