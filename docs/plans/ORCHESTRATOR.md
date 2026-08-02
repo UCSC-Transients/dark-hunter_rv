@@ -242,16 +242,12 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
 - [x] **P5** Trust / SB2 / 08-full on main (#99 → #101) — residuals remain (below)
 
-### NEXT (orchestrator — 2026-08-02 post-#104)
+### NEXT (orchestrator — 2026-08-02 post-#105)
 
-1. ~~PR #103~~ / ~~PR #104~~ **MERGED** (`a174732`, `d3e1043`).
-2. Soft residuals remaining (mostly human / data):
-   - **11d** default adopt = human gate only
-   - **SB2 NSS:** fetch CLI + `calibration/nss_two_body_source_ids.csv` (147/155) in soft-residuals-3; re-run fraction table after `sb2_candidate` refit
-   - **Trust 02b** keep opt-in (A/B on main via #104)
-   - **08** lit n_stars=8 ceiling (spectra gap); n≥10 needs ingest or master expand
-3. Pre-final: bias rebuild + ziggy (§12.1) when human says go
-4. Program DoD: code lanes largely closed; remaining = human gates + data ingest
+1. ~~#103 / #104 / #105~~ **MERGED** (soft residuals through NSS dump `a7f2b8d`).
+2. **Code DoD largely met.** Remaining = human/data gates — see [HUMAN_GATES.md](HUMAN_GATES.md).
+3. Closed issues #40/#41/#42 after stack land; #44/#45/#94 stay open with residual notes.
+4. Do **not** enable default epoch_ccf adopt, trust-on, or ziggy bias rebuild without table answers.
 
 ### Branch map (historical; stack landed)
 
@@ -259,6 +255,7 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 |-------|-----|----------------|
 | 1 | [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) | 2026-08-02 |
 | 2–5 stack | [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96)–[#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) → [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | 2026-08-02 `c6801f7` |
+| Soft residuals | [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)–[#105](https://github.com/UCSC-Transients/dark-hunter_rv/pull/105) | 2026-08-02 |
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -648,6 +645,9 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | LIT n=8 | **PARTIAL** | same branch | max spectra∩master; teff empty-row fix |
 | 2026-08-02 | #104 merged | **done** | main `d3e1043` | soft-residuals-3 next |
 | 2026-08-02 | NSS fetch | **done** | `phase/soft-residuals-3` | 147/155 NSS two-body; flag rates need refit |
+| 2026-08-02 | #105 merged | **done** | main `a7f2b8d` | code DoD; human gates next |
+| 2026-08-02 | issues | closed #40/#41/#42 | — | #44/#45/#94 remain open |
+| 2026-08-02 | HUMAN_GATES | **PR** | `phase/soft-residuals-4` | decision checklist |
 | 2026-08-02 | #95–#99 → #101 | **merged to main** | `c6801f7` | Full stack on `main` |
 | 2026-08-02 | docs status | in flight | `docs/post-101-status` | INDEX/ORCHESTRATOR/ATTACK_ORDER post-merge |
 | 2026-08-02 | 11d wiring | **done** (local) | `f14f0a5` on `step/11d-product-wiring` | enrich hook + fusion docs; default-adopt still human |

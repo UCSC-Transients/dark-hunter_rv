@@ -6,6 +6,8 @@
 
 **Orchestrator brief (launch subagents from this):** [ORCHESTRATOR.md](ORCHESTRATOR.md)
 
+**Human gates (remaining decisions):** [HUMAN_GATES.md](HUMAN_GATES.md)
+
 Orchestrator (local legacy): `.cursor/plans/rv_pipeline_master_plan_8447f2cd.plan.md`
 
 Workflow: [WORKFLOW.md](WORKFLOW.md)
