@@ -17,7 +17,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; bias keep Jun-16; **step 01 complete (waivers)** |
 | **template_fft** | 10 | **Complete** (#88 + 10c offsets `method_rv_offsets.txt`) |
 | **strong_lines** | 06 | **Complete** ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) — Hβ-primary Balmer; metals + Q×SNR² IVW |
-| **epoch_ccf** (relative) | 11 | **in_progress** — spike done; **matrix CLI in flight** ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
+| **epoch_ccf** (relative) | 11 | **matrix CLI done** (local `be9b0a3`); short-pair QC next ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
 | **fusion / adoption** | 03, 04 | **03+04 complete locally** (`9de6c68`, `fa0578c`); PRs pending |
 
 | Step | Plan | Status | Issue | Branch(es) | Merged |
@@ -33,6 +33,6 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | 08 External RV cross-check | [steps/08-external-rv-crosscheck.md](steps/08-external-rv-crosscheck.md) | in_progress (**lite done**; full later) | [#45](https://github.com/UCSC-Transients/dark-hunter_rv/issues/45) | `step/08-external-rv-crosscheck` | lite local `a6ffe75` |
 | 09 CCF RV estimator (mask) | [steps/09-ccf-rv-estimator.md](steps/09-ccf-rv-estimator.md) | complete (`gauss_offset`) | — | — | — |
 | 10 Template FFT precision | [steps/10-template-fft-precision.md](steps/10-template-fft-precision.md) | **complete** (10c offsets) | [#87](https://github.com/UCSC-Transients/dark-hunter_rv/issues/87) | `step/10-template-fft-precision`, `step/10c-method-offsets` | 2026-08-01 ([#88](https://github.com/UCSC-Transients/dark-hunter_rv/pull/88)); 10c local `18d6cec` |
-| 11 Epoch–epoch CCF matrix | [steps/11-epoch-ccf-matrix.md](steps/11-epoch-ccf-matrix.md) | in_progress (spike) | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94) | `step/11-epoch-ccf-matrix` | — |
+| 11 Epoch–epoch CCF matrix | [steps/11-epoch-ccf-matrix.md](steps/11-epoch-ccf-matrix.md) | in_progress (11a–c local) | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94) | `step/11-epoch-ccf-matrix`, `step/11-epoch-ccf-matrix-cli` | local `be9b0a3` |
 
 Update this file when an issue closes or a step status changes. Keep in sync with `.cursor/plans/rv-pipeline/INDEX.md`.
