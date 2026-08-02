@@ -244,9 +244,14 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human: PR wave** — Phases 1–5 still local only; need push/PR approvals (see branch list below).
+1. **PR stack opened (merge in order → retarget next to `main` after each merges):**
+   - Phase 1 → `main`: [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) `phase/1-absolute-baselines`
+   - Phase 2 → phase/1: [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96) `phase/2-validation`
+   - Phase 3 → phase/2: [#97](https://github.com/UCSC-Transients/dark-hunter_rv/pull/97) `phase/3-fusion-plots`
+   - Phase 4 → phase/3: [#98](https://github.com/UCSC-Transients/dark-hunter_rv/pull/98) `phase/4-epoch-ccf`
+   - Phase 5 → phase/4: [#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) `phase/5-trust-sb2-lit`
 2. Pre-final: bias rebuild + ziggy (§12.1) when you say go.
-3. Soft residuals (not blocking PR start): 11d product tags; SB2 NSS table + pipeline fuse; trust campaign A/B; more lit diagnostics (≥10 stars).
+3. Soft residuals: 11d product tags; SB2 NSS + pipeline fuse; trust campaign A/B; lit n≥10.
 
 ### Branch map for PRs (local tips)
 
@@ -639,6 +644,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | TRUST-02B | **done** | `f0400f9` on `step/02b-trust-weights-stack` | opt-in trust IVW; default off; campaign A/B residual |
 | 2026-08-02 | SB2-07 | **done** (partial) | `7129124` on `step/07-sb2-search` | WIP tracked; BiGauss APIs fixed; NSS/pipeline fuse residual |
 | 2026-08-02 | LIT-08-FULL | **done PARTIAL** | `fec76dc` on `step/08-external-rv-full` | LAMOST/RAVE+overlay; n_lit=4 blocker |
+| 2026-08-03 | PR wave | opened stacked | #95–#99 | Merge Phase 1→5 in order; bases are prior phase branches |
 
 ---
 
