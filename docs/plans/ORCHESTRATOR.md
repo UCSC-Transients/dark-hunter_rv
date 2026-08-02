@@ -620,6 +620,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | FUSION-03 | **done** | `9de6c68` on `step/03-method-fusion-coverage` | method_fusion v1 + coverage; 25 tests; #40 commented |
 | 2026-08-02 | PLOTS-04 | launched | `step/04-adopted-rv-match-plots` @ fusion tip | — |
 | 2026-08-02 | PLOTS-04 | **done** | `fa0578c` on `step/04-adopted-rv-match-plots` | adopted_rv_match plot + pipeline hook; visual residual |
+| 2026-08-02 | EPOCH-MATRIX | launched | `step/11-epoch-ccf-matrix-cli` | Phase 4 |
 
 ---
 
