@@ -23,7 +23,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | Step | Plan | Status | Issue | Branch(es) | Merged |
 |------|------|--------|-------|------------|--------|
 | 00 Literature RV master | [steps/00-literature-rv-master.md](steps/00-literature-rv-master.md) | completed | [#37](https://github.com/astrofoley/dark-hunter_rv/issues/37) | `step/00-literature-rv-master` | 2026-06-07 ([#46](https://github.com/astrofoley/dark-hunter_rv/pull/46)) |
-| 01 Benchmark cool precision | [steps/01-benchmark-cool-precision.md](steps/01-benchmark-cool-precision.md) | in_progress | [#38](https://github.com/astrofoley/dark-hunter_rv/issues/38) | `step/01-benchmark-cool-precision` | — |
+| 01 Benchmark cool precision | [steps/01-benchmark-cool-precision.md](steps/01-benchmark-cool-precision.md) | **complete** (waivers) | [#38](https://github.com/UCSC-Transients/dark-hunter_rv/issues/38) | `step/01-benchmark-cool-precision`, `step/01-cool-closeout` | local `5c352e4` |
 | 02 Chunk weights / subchunks | [steps/02-chunk-weights-subchunks.md](steps/02-chunk-weights-subchunks.md) | in_progress (02a verified; rebuild deferred pre-final; 02b later) | [#39](https://github.com/astrofoley/dark-hunter_rv/issues/39) | `step/02a-subchunk-study`, `step/02a-bias-defer-verify`, `step/02b-trust-weights-stack` | — |
 | 03 Method fusion / coverage | [steps/03-method-fusion-coverage.md](steps/03-method-fusion-coverage.md) | pending | [#40](https://github.com/astrofoley/dark-hunter_rv/issues/40) | `step/03-method-fusion-coverage` | — |
 | 04 Adopted-RV match plots | [steps/04-adopted-rv-match-plots.md](steps/04-adopted-rv-match-plots.md) | pending | [#41](https://github.com/astrofoley/dark-hunter_rv/issues/41) | `step/04-adopted-rv-match-plots` | — |

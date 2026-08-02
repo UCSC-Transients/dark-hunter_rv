@@ -237,7 +237,7 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [~] **P0c** Keep committed Jun-16 `bias_statistics.txt` (s8). **Fresh rebuild deferred to pre-final product.** Ziggy: alert human only (see §12.1)
 - [x] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done (`18d6cec` on `step/10c-method-offsets`)
 - [x] **P1** Absolute lanes OK for now: mask bias verified (rebuild deferred), template offsets, strong tests+Q (fresh `ivw_n=` diagnostics still optional). Epoch spike done (#94); matrix CLI = Phase 4
-- [ ] **P2** 08 lite report + 01 cool-precision closeout
+- [ ] **P2** 08 lite report (in flight) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
 - [ ] **P3** Fusion merged; adopted plots merged
 - [ ] **P4** Step 11 v1 merged; 05a short-pair report uses matrix
 - [ ] **P5** 02b + SB2 (reuse untracked WIP) + 08-full — **do**, not defer
@@ -615,6 +615,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | TEMPLATE-OFFSETS | **done** | `18d6cec` on `step/10c-method-offsets` | APF tmpl −1.048 / strong −2.803; #87 commented; step 10 → complete |
 | 2026-08-02 | STRONG-QA | hung→relaunch | — | First wt agent stalled; relaunched |
 | 2026-08-02 | STRONG-QA | **done** | `767d68b` on `step/06-post-merge-qa` | pytest 19p/1s; Q match; archived smoke lacks `ivw_n=` (code emits) |
+| 2026-08-02 | BENCH-01 | **done** (waivers) | `5c352e4` on `step/01-cool-closeout` | σ_RV north star MET; chunk-scatter/Phase A waived; #38 commented |
 
 ---
 
