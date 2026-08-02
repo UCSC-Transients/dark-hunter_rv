@@ -1,6 +1,7 @@
 output/
 plots/
 validation_output/
+.worktrees/
 .cursor/
 __pycache__/
 *.pyc
