@@ -3,10 +3,16 @@ step_id: 06-strong-line-line-list
 phase: C
 status: complete
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/43
+related_issues:
+  - https://github.com/UCSC-Transients/dark-hunter_rv/issues/91
+  - https://github.com/UCSC-Transients/dark-hunter_rv/issues/92
+  - https://github.com/UCSC-Transients/dark-hunter_rv/issues/93
+pull_request: https://github.com/UCSC-Transients/dark-hunter_rv/pull/90
+merged: 2026-08-02
 branches:
   - step/06-strong-line-line-list
-  - step/10-template-fft-precision  # API shipped in PR #88
-  - step/06-strong-line-teff-sweep
+  - step/10-template-fft-precision  # Voigt+Lorentz API shipped in PR #88
+  - step/06-strong-line-teff-sweep   # product IVW path in PR #90
 depends_on: [05-short-pair-epoch-ccf]
 blocks: [07-sb2-search]
 master_todo_id: strong-line-line-list
@@ -21,39 +27,62 @@ repo_docs_to_update:
 
 ## Goal / science outcome
 
-Empirically chosen strong lines per Teff/S/N; extend `measure_h_beta_rv` API beyond Hβ-only for the `strong_lines` method.
+Empirically chosen strong lines per Teff/S/N; extend Voigt+Lorentz beyond Hβ-only; ship one debiased, quality-weighted `strong_lines` RV per exposure.
 
 ## Scope (in) / non-goals (out)
 
-**In:** Line list study; generalized Voigt+Lorentz per line; pipeline still exposes one `strong_lines` row.
+**In:** Line list study; generalized Voigt+Lorentz per line; inclusion QC; per-line mask offsets + qualities; IVW combine into one `strong_lines` row.
 
-**Out:** Reviving Gaussian multi-line centroids as product RV.
+**Out:** Reviving Gaussian multi-line centroids as product RV; SB2 / mask retile.
 
 ## Prerequisites
 
-- Hβ path in `rv_core.py`
+- Hβ path in `rv_core.py` / `measure_strong_line_voigt_lorentz` (PR #88)
 - Overlap report Teff strata
 
 ## Implementation tasks
 
 - [x] Survey candidates from `STRONG_LINES` / literature (`docs/broad_line_method.md`)
-- [x] Validation sweep: recovery vs mask/template per Teff bin (`validation/strong_line_teff_sweep.py` on 114 stems)
-  - Hα uncovered on APF; product/free always Hβ; oracle non-Hβ wins 8/114 with tiny residual gain → **stay Hβ-primary**
-- [x] Refactor `measure_strong_line_voigt_lorentz(rest=...)` from Hβ code
-- [x] Wire best line(s) into pipeline `strong_lines` row (Teff-ordered single best)
-- [x] Update tests in `tests/test_h_beta_rv.py` (Hα synthetic + Teff order)
+- [x] Balmer Teff sweep vs mask (`validation/strong_line_teff_sweep.py` on 114 stems) — **#43**
+  - Hα uncovered on APF; product/free always Hβ; oracle non-Hβ wins 8/114 with tiny residual gain → **stay Hβ-primary** for Balmer preference
+- [x] Metal / secondary candidate sweep (`validation/strong_line_candidate_sweep.py`)
+  - **Keep:** Mg I b₂/b₃, Ca I 6122, Ca I 6162, Ca I 4227
+  - **Exclude:** Ca H&K, red IR (8498/8807); hold Ca II 8662 (fringe)
+- [x] Refactor `measure_strong_line_voigt_lorentz(rest=...)` from Hβ code (PR #88)
+- [x] **#91** Wire keep metals into `product_strong_line_rests` / pipeline
+- [x] **#92** Inclusion gates: depth, width, err, telluric, continuum `median(flux/eflux)` near line
+- [x] **#93** Debias + quality file + IVW: `w = Q_line × (S/N_near_line)²`
+  - File: `calibration/strong_line_offsets.txt` (offset + quality; CaI6122 = 1)
+  - Pipeline: `read_strong_line_calibration` → `combine_strong_line_rvs`
+- [x] Tests: `tests/test_strong_lines_product.py`, Teff/candidate sweep tests, Hβ synthetic
 
 ## Open decisions (locked)
 
-- **Single best line per exposure** (not joint multi-line) for first ship.
-- **APF production:** Hβ primary; Hγ/Hδ fallback when Hβ fails; Hα last (no APF coverage).
+- **APF Balmer preference:** Hβ primary; Hγ/Hδ fallback; Hα last (no APF coverage).
+- **Product RV:** multi-line IVW after inclusion (not single-best-line-only). Candidate order: Hβ → MgIb2 → CaI6122 → CaI6162 → MgIb3 → CaI4227 → Hγ → Hδ → Hα.
+- **Quality:** from MAD of **debiased** residuals vs mask on inclusion-gated campaign rows; separate from per-exposure S/N.
+
+## Calibrated qualities (campaign, pending merge)
+
+| Line | offset (km/s) | Q |
+|------|-------------:|--:|
+| CaI6122 | 1.274 | 1.000 |
+| CaI6162 | 1.687 | 0.895 |
+| MgIb2 | 1.553 | 0.612 |
+| MgIb3 | 2.658 | 0.546 |
+| Hβ | 0.525 | 0.322 |
+| CaI4227 | 2.696 | 0.178 |
+| Hγ / Hδ / Hα | 0 | 0.20 / 0.20 / 0.15 (placeholders) |
 
 ## Key files
 
+- `darkhunter_rv/strong_lines.py`
+- `darkhunter_rv/pipeline.py` (strong_lines IVW row)
 - `darkhunter_rv/rv_core.py`
-- `darkhunter_rv/continuum.py` (`STRONG_LINES`)
-- `validation/h_beta_profile_method_report.py`
+- `calibration/strong_line_offsets.txt`
+- `docs/broad_line_method.md`
 - `validation/strong_line_teff_sweep.py`
+- `validation/strong_line_candidate_sweep.py`
 
 ## Commands
 
@@ -65,23 +94,35 @@ PYTHONPATH=. python -m validation.strong_line_teff_sweep \
   --data-root /Users/rfoley/darkhunter/rvs/data \
   --out-dir validation_output/strong_line_teff_sweep \
   --continuum-mode sinc_blaze
-PYTHONPATH=. python -m pytest tests/test_h_beta_rv.py tests/test_strong_line_teff_sweep.py -q
+PYTHONPATH=. python -m pytest \
+  tests/test_strong_lines_product.py \
+  tests/test_h_beta_rv.py \
+  tests/test_strong_line_teff_sweep.py \
+  tests/test_strong_line_candidate_sweep.py -q
 ```
 
 ## Acceptance criteria
 
-- Documented line list with Teff applicability
-- At least one additional line beyond Hβ tested on real spectra OR explicit decision to stay Hβ-only with rationale
-- No regression on hot-star Hβ performance
+- Documented line list with Teff / instrument applicability
+- Additional lines beyond Hβ tested on real spectra; keep/exclude decisions recorded
+- One `strong_lines` diagnostics row per exposure via inclusion + Q×SNR² IVW
+- No regression on hot-star Hβ path
+- PR #90 CI green and merged
 
 ## Tests / validation
 
-- Synthetic line recovery tests per rest wavelength
-- Overlap residuals for strong_lines vs mask on cool stars
-- 114-stem force-fit sweep vs mask (`SWEEP_SUMMARY.md`)
+- Unit: inclusion, local flux/eflux S/N, debias-before-Q, file→IVW weights
+- 114-stem Balmer Teff sweep (`validation_output/strong_line_teff_sweep/`)
+- 114-stem metal candidate sweep (`validation_output/strong_line_candidate_sweep/`)
+
+## Current status (2026-08-02)
+
+- **Merged** PR [#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90) (`dbdcdc0`).
+- Issues #43 / #91 / #92 / #93 closed via PR.
 
 ## Propagation checklist (on merge)
 
-- [ ] Master todo `strong-line-line-list` → completed
-- [ ] Update `three_rv_methods` plan
-- [ ] Close #43
+- [x] Master todo `strong-line-line-list` → completed
+- [x] Set this step `status: complete`; INDEX Merged column → 2026-08-02 + #90
+- [ ] Update `three_rv_methods` plan if still open
+- [x] Close #43, #91, #92, #93 (via PR)
