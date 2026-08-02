@@ -1,10 +1,12 @@
 ---
 step_id: 11-epoch-ccf-matrix
 phase: C
-status: in_progress
+status: in_progress  # 11a–c on main (#95/#98→#101); 11d fusion-doc + optional pipeline rows remain
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/94
 branches:
   - step/11-epoch-ccf-matrix
+  - step/11-epoch-ccf-matrix-cli
+merged: 2026-08-02 via #95/#98 → #101 (c6801f7)
 depends_on: [01-benchmark-cool-precision]
 blocks: [03-method-fusion-coverage]
 # Soft: fusion can consume epoch_ccf fills; matrix work can start before fusion
