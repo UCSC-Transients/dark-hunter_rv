@@ -271,6 +271,51 @@ def epoch_pair_ccf(
     )
 
 
+def inflate_sigma_ij(
+    sigma_ij: np.ndarray,
+    scale: float,
+    *,
+    floor: float = 1.0,
+) -> np.ndarray:
+    """
+    Multiply pairwise formal uncertainties by a global short-pair scale factor.
+
+    Parameters
+    ----------
+    sigma_ij
+        ``(N, N)`` formal pair uncertainties from epoch–epoch CCF.
+    scale
+        Multiplicative inflation (typically RMS(|Δv|) / median(σ) on Δt≈0 pairs).
+        Values ``<= 1`` leave the matrix unchanged when combined with ``floor``.
+    floor
+        Minimum applied scale (default 1.0 = never deflate).
+
+    Returns
+    -------
+    np.ndarray
+        Copy of ``sigma_ij`` with finite positive entries scaled by
+        ``max(floor, scale)``. Diagonal left unchanged.
+
+    Limitations
+    -----------
+    Global scalar only; does not model time- or S/N-dependent underestimation.
+    Prefer calibrating ``scale`` from ``validation.find_short_pairs`` QC.
+    """
+    sig = np.asarray(sigma_ij, float).copy()
+    fac = max(float(floor), float(scale))
+    if not np.isfinite(fac) or fac <= 0:
+        raise ValueError("scale/floor must be finite and positive")
+    if fac == 1.0:
+        return sig
+    mask = np.isfinite(sig) & (sig > 0)
+    # Keep diagonal as-is (auto-corr QC widths are not orbit-pair errors)
+    n = sig.shape[0]
+    for i in range(n):
+        mask[i, i] = False
+    sig[mask] = sig[mask] * fac
+    return sig
+
+
 def combine_relative_and_absolute(
     dv_ij: np.ndarray,
     sigma_ij: np.ndarray,
@@ -302,7 +347,7 @@ def combine_relative_and_absolute(
 
     Limitations
     -----------
-    Formal covariance only; no short-pair inflation. Assumes independent pair
+    Formal covariance only. Apply :func:`inflate_sigma_ij` first for short-pair scatter inflation. Assumes independent pair
     errors (overcounts information if both triangles supplied with
     ``use_upper_triangle_only=False``).
     """

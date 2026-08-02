@@ -1,0 +1,8 @@
+metric,value
+recommended_sigma_ij_scale,1.2789366731299814
+rms_kms,48.72039736696063
+mad_kms,3.109727050502977
+median_formal_err_kms,3.604933240198937
+n_pairs,65.0
+n_violations,53.0
+max_delta_days,1.0

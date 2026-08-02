@@ -34,6 +34,7 @@ from darkhunter_rv.epoch_ccf import (
     build_relative_matrix_from_pairs,
     combine_relative_and_absolute,
     epoch_pair_ccf,
+    inflate_sigma_ij,
 )
 
 logger = logging.getLogger(__name__)
@@ -263,12 +264,16 @@ def run_matrix(
     rv_search_half_width_kms: float = 500.0,
     max_grid_points: int | None = 16384,
     abs_method: str = "mask_ccf",
+    sigma_ij_scale: float = 1.0,
 ) -> dict:
     """
     Build and persist epoch CCF matrix (+ optional abs fill) for one star.
 
     Writes ``epoch_ccf_pairs.csv``, ``epoch_ccf_matrix.npz``, optional
     ``epoch_ccf_abs_fill.csv``, and ``epoch_ccf_meta.json``.
+
+    ``sigma_ij_scale`` multiplies off-diagonal formal ``sigma_ij`` (short-pair
+    inflation from step 05a; default 1.0 = no change).
     """
     epochs = discover_epoch_spectra(data_root, gaia_id)
     if not epochs:
@@ -296,6 +301,7 @@ def run_matrix(
     # Matrix assembly uses off-diagonal upper triangle only
     off_diag = {k: v for k, v in pairs.items() if k[0] != k[1]}
     dv, sig = build_relative_matrix_from_pairs(len(epochs), off_diag)
+    sig = inflate_sigma_ij(sig, float(sigma_ij_scale))
     # Overlay measured diagonal (auto-corr) for QC storage
     diag_dv = np.zeros(len(epochs))
     for i in range(len(epochs)):
@@ -310,6 +316,14 @@ def run_matrix(
     pairs_df.insert(0, "gaia_id", str(gaia_id))
     pairs_df.insert(1, "epoch_i", [epoch_indices[int(r["i"])] for r in long_rows])
     pairs_df.insert(2, "epoch_j", [epoch_indices[int(r["j"])] for r in long_rows])
+    fac = max(1.0, float(sigma_ij_scale))
+    if fac != 1.0 and "err_kms" in pairs_df.columns and "i" in pairs_df.columns:
+        i_arr = pairs_df["i"].to_numpy(dtype=int)
+        j_arr = pairs_df["j"].to_numpy(dtype=int)
+        errs = pairs_df["err_kms"].to_numpy(dtype=float).copy()
+        ok = (i_arr != j_arr) & np.isfinite(errs) & (errs > 0)
+        errs[ok] *= fac
+        pairs_df["err_kms"] = errs
     pairs_csv = out_dir / "epoch_ccf_pairs.csv"
     pairs_df.to_csv(pairs_csv, index=False)
 
@@ -431,6 +445,7 @@ def run_matrix(
         "wave_max": wave_max,
         "max_grid_points": max_grid_points,
         "rv_search_half_width_kms": rv_search_half_width_kms,
+        "sigma_ij_scale": float(max(1.0, float(sigma_ij_scale))),
         "note": "Not default adopted RV; relative/fill product only (step 11).",
     }
     meta_path = out_dir / "epoch_ccf_meta.json"
@@ -481,6 +496,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=16384,
         help="Cap log-λ FFT length (power of two). Use 0 for uncapped.",
     )
+    p.add_argument(
+        "--sigma-ij-scale",
+        type=float,
+        default=1.0,
+        help="Multiply off-diagonal sigma_ij (short-pair inflation; default 1)",
+    )
     p.add_argument("--log-level", default="INFO")
     return p
 
@@ -500,6 +521,7 @@ def main(argv: list[str] | None = None) -> int:
         rv_search_half_width_kms=float(args.rv_search_half_width_kms),
         max_grid_points=max_grid,
         abs_method=str(args.abs_method),
+        sigma_ij_scale=float(args.sigma_ij_scale),
     )
     print(json.dumps({k: meta[k] for k in (
         "gaia_id",
