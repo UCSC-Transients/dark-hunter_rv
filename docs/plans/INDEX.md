@@ -17,7 +17,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; **bias keep Jun-16 (rebuild deferred pre-final)** |
 | **template_fft** | 10 | **Merged** (#88); 114 confirm done — **10c offsets** next |
 | **strong_lines** | 06 | **Complete** ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) — Hβ-primary Balmer; metals + Q×SNR² IVW |
-| **epoch_ccf** (relative) | 11 | **Pending** — all×all CCF matrix + abs fill ([plan](steps/11-epoch-ccf-matrix.md)) |
+| **epoch_ccf** (relative) | 11 | **in_progress** — spike done (`epoch_ccf.py` + WLS); matrix CLI next ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
 | **fusion / adoption** | 03, 04 | After absolute lanes + prefer after 11 v1 |
 
 | Step | Plan | Status | Issue | Branch(es) | Merged |
@@ -33,6 +33,6 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | 08 External RV cross-check | [steps/08-external-rv-crosscheck.md](steps/08-external-rv-crosscheck.md) | pending (08 lite OK pre-SB2) | [#45](https://github.com/astrofoley/dark-hunter_rv/issues/45) | `step/08-external-rv-crosscheck` | — |
 | 09 CCF RV estimator (mask) | [steps/09-ccf-rv-estimator.md](steps/09-ccf-rv-estimator.md) | complete (`gauss_offset`) | — | — | — |
 | 10 Template FFT precision | [steps/10-template-fft-precision.md](steps/10-template-fft-precision.md) | **in_progress** (code + 114 confirm; **10c offsets**) | [#87](https://github.com/UCSC-Transients/dark-hunter_rv/issues/87) | `step/10-template-fft-precision` | 2026-08-01 ([#88](https://github.com/UCSC-Transients/dark-hunter_rv/pull/88)) |
-| 11 Epoch–epoch CCF matrix | [steps/11-epoch-ccf-matrix.md](steps/11-epoch-ccf-matrix.md) | pending | — (create on start) | `step/11-epoch-ccf-matrix` | — |
+| 11 Epoch–epoch CCF matrix | [steps/11-epoch-ccf-matrix.md](steps/11-epoch-ccf-matrix.md) | in_progress (spike) | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94) | `step/11-epoch-ccf-matrix` | — |
 
 Update this file when an issue closes or a step status changes. Keep in sync with `.cursor/plans/rv-pipeline/INDEX.md`.

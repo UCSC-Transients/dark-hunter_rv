@@ -605,6 +605,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | (policy) | human grill locked | local §0.6 | Shared-worktree clash → kill; relaunch in isolated worktrees |
 | 2026-08-02 | (launch) | 4 cards parallel (wt) | — | STRONG-QA, MASK-DEPLOY(thin), TEMPLATE-OFFSETS, EPOCH-SPIKE |
 | 2026-08-02 | MASK-DEPLOY | **done** (thin) | `5fd36fa` on `step/02a-bias-defer-verify` | Jun-16 bias verified (364 keys); rebuild deferred; ziggy §12.1 |
+| 2026-08-02 | EPOCH-SPIKE | **done** | `dbe7e8d` on `step/11-epoch-ccf-matrix` | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94); pytest 5/5; matrix CLI = later card |
 
 ---
 
