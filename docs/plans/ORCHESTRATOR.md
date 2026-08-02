@@ -244,10 +244,10 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 
 ### NEXT (orchestrator — 2026-08-02 post-#101)
 
-1. **PR `phase/soft-residuals`:** post-#101 docs (#102 content) + 11d enrich + SB2 pipeline fuse — **this wave**.
+1. **PR [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)** `phase/soft-residuals`: post-#101 docs + 11d enrich + SB2 pipeline fuse + NSS cohort CLI.
 2. Soft residuals still open after that PR:
-   - **11d** default adopt = human gate only (enrich hook lands in soft-residuals)
-   - **SB2** Gaia NSS cohort fraction table (`validation/sb2_nss_cohort_report.py` TODO)
+   - **11d** default adopt = human gate only
+   - **SB2** real NSS ID dump (CLI+stub landed; science fractions need catalog)
    - **Trust 02b** campaign σ_RV / relative-gate A/B vs IVW-only
    - **08** expand lit overlap to ≥10 stars when more APF diagnostics exist
 3. Pre-final: bias rebuild + ziggy (§12.1) when human says go

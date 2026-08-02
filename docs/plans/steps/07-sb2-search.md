@@ -48,8 +48,9 @@ Detect and report double-lined systems where appropriate; optional two-lined orb
 - [x] Exposure-level `sb2_candidate` flag + columns in CSV/summary
   - `python -m validation.sb2_search` writes `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, ...) and `sb2_report.json`.
   - Pipeline `*_diagnostics.csv` also carries `sb2_candidate` / primary–secondary RV columns when mask CCF runs.
-- [ ] Validation report: fraction flagged vs Gaia NSS SB2
-  - Recipe documented in `docs/validation_playbook.md` (Gaia NSS cohort fraction); **full table deferred** (TODO: `validation/sb2_nss_cohort_report.py`).
+- [x] Validation report: fraction flagged vs Gaia NSS SB2
+  - `python -m validation.sb2_nss_cohort_report` + stub/cached `--nss-ids-csv`; playbook recipe updated.
+  - Real NSS dump still needed for science fractions (stub IDs for CLI/tests only).
 
 ### 07c (`step/07c-sb2-orbit-optional`, defer if needed)
 
@@ -98,4 +99,4 @@ python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_7741372749369
 - Spectral decomposition per epoch vs time-series only? (WIP does multi-epoch template fit + per-epoch separated spectra.)
 - 07c in scope for this step or separate future step? **Kept:** orbit modules tracked; full MCMC into `fit_apf_rv_keplerian.py` still out of scope.
 - [x] Pipeline `*_diagnostics.csv` `sb2_candidate` fuse (low-cost default from mask CCF; `--no-sb2-score` to skip).
-- Gaia NSS cohort fraction table: deferred (playbook recipe + TODO).
+- [x] Gaia NSS cohort report CLI (`validation/sb2_nss_cohort_report.py`); replace stub ID list for production fractions.

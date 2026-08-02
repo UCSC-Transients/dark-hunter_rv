@@ -1,0 +1,5 @@
+# Stub NSS two-body / SB2 source_ids for CLI smoke tests.
+# Replace with a dump from gaiadr3.nss_two_body_orbit (or SB2 subset) for real cohort stats.
+source_id
+1000000000000000000
+2000000000000000000
