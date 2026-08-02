@@ -9,6 +9,7 @@
 
 ## Commands
 
+- **Adopted-RV match plot** (step 04): with `--plots` or `--plots-focus`, pipeline writes `{stem}_adopted_rv_match.png` — continuum-normalized orders, stellar mask + strong-line markers at debiased adopted RV (prefers fusion `rv_calibrated_kms` when accepted; else cascade).
 - **Full calibration (bias + method offsets + manifest):** `python -m validation.run_calibration_setup` (see [operations.md](operations.md)).
 - Build bias set only:
   - `python3 validation/build_bias_set.py --input-dir output --out-dir validation_output/bias`
