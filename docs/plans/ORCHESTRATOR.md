@@ -607,6 +607,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | MASK-DEPLOY | **done** (thin) | `5fd36fa` on `step/02a-bias-defer-verify` | Jun-16 bias verified (364 keys); rebuild deferred; ziggy §12.1 |
 | 2026-08-02 | EPOCH-SPIKE | **done** | `dbe7e8d` on `step/11-epoch-ccf-matrix` | [#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94); pytest 5/5; matrix CLI = later card |
 | 2026-08-02 | TEMPLATE-OFFSETS | **done** | `18d6cec` on `step/10c-method-offsets` | APF tmpl −1.048 / strong −2.803; #87 commented; step 10 → complete |
+| 2026-08-02 | STRONG-QA | hung→relaunch | — | First wt agent stalled; relaunched |
 
 ---
 
