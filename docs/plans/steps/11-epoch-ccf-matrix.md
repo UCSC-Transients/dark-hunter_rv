@@ -1,8 +1,8 @@
 ---
 step_id: 11-epoch-ccf-matrix
 phase: C
-status: pending
-github_issue: null  # create when work starts
+status: in_progress
+github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/94
 branches:
   - step/11-epoch-ccf-matrix
 depends_on: [01-benchmark-cool-precision]
