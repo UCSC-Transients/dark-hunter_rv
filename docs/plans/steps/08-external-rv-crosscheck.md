@@ -62,7 +62,7 @@ python -m validation.compare_literature_rvs \
 
 **Lite note (2026-08-01):** soft-dep on step 07; CLI + playbook + nearest-BJD join done.
 
-**Full note (2026-08-01):** LAMOST/RAVE summary ingest + `--literature-master` orbit overlay + report under `validation_output/literature_crosscheck_full/`. Pipeline↔literature unique El-Badry stars on disk currently **4** (<10 acceptance); report marks PARTIAL until more cohort diagnostics exist. LAMOST/RAVE compared where summaries have rows.
+**Full note (2026-08-02):** Using `output/Gaia_DR3_*_diagnostics.csv` reaches **n_stars=8** (all master IDs that have local spectra). Remaining 15 master systems lack spectra under `/Users/rfoley/darkhunter/rvs/data` — n≥10 needs ingest or master expansion. Empty-`teff` diagnostics no longer crash the loader.
 
 ```bash
 cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv

@@ -86,7 +86,10 @@ bash scripts/refit_all_per_object_parallel.sh
 - [x] Implement trust weights (residual vs robust mean, telluric fraction, CCF quality) scaling IVW in `pipeline.py`
 - [x] Add weight columns to diagnostics CSV
 - [x] Version `order_chunk_qc.yaml` thresholds
-- [ ] Validate on relative gate + median σ_RV vs current IVW-only stack
+- [x] Offline A/B vs IVW-only: `validation/trust_weight_ab_report.py` (re-stack from diagnostics)
+  - Post-#103 sample (200 `output/` exposures): median formal σ **off 0.16 → on 0.32 km/s** (ratio ~2.4); median |ΔRV| ~0.77 km/s
+  - **Keep default off** until human reviews `validation_output/trust_ab_post103/` and relative-gate campaign
+- [ ] Optional: full relative-gate campaign re-run with `--trust-weights` (heavy; not blocking)
 
 **Note:** Implementation ships **opt-in** (`trust_weights.enabled: false`; CLI `--trust-weights`). Campaign σ_RV / relative-gate A/B still open. Historical deferral (wait for template baseline) remains valid for *tuning*; code path ready.
 

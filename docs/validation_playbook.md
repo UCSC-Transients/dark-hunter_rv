@@ -69,6 +69,10 @@
   - Orbit-plot overlay from master CSV: `python fit_apf_rv_keplerian.py --summary /Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_<id>_summary.txt --literature-master calibration/literature_rv_master.csv`
   - Outputs (gitignored): `validation_output/literature_crosscheck_full/{REPORT.md,epoch_pairs.csv,per_star_bias_rms.csv,orbit_qa.csv,external_*.csv}`; tracked key tables under `calibration/literature_crosscheck_full/`.
   - Nearest-BJD join on `gaia_dr3_id` for pipeline↔literature and external↔literature (LAMOST_LRS / LAMOST_MRS / RAVE_DR6 by default).
+  - Prefer `output/Gaia_DR3_*_diagnostics.csv` for max lit overlap (n_stars=8 with current data∩master).
+- **Trust-weight A/B (step 02b; offline re-stack):**
+  - `PYTHONPATH=. python -m validation.trust_weight_ab_report --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/trust_ab_post103 --max-files 200`
+  - Keep `--trust-weights` opt-in; review summary.json before enabling default.
 - Interpretation plots + text (after diagnose, or on existing CSVs):
   - `env PYTHONPATH=. python3 validation/legacy_interpretation_report.py --report-dir validation_output/diagnose_legacy --pipeline-summary validation_output/pipeline_rerun/Gaia_DR3_<id>_summary.txt --legacy-summary ../output/<id>_summary.txt`
 

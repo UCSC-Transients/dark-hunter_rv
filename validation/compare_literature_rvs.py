@@ -99,7 +99,11 @@ def load_pipeline_epochs_from_diagnostics(
         mjd = float(pd.to_numeric(df["mjd"], errors="coerce").dropna().iloc[0]) if "mjd" in df.columns else float("nan")
         if not np.isfinite(mjd):
             continue
-        teff = float(pd.to_numeric(df["teff"], errors="coerce").dropna().iloc[0]) if "teff" in df.columns else float("nan")
+        teff = float("nan")
+        if "teff" in df.columns:
+            teff_series = pd.to_numeric(df["teff"], errors="coerce").dropna()
+            if not teff_series.empty:
+                teff = float(teff_series.iloc[0])
         basename = path.name.replace("_diagnostics.csv", "")
         file_col = str(df["file"].iloc[0]) if "file" in df.columns else basename
         for method in wanted:
