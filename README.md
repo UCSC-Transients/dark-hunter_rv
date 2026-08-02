@@ -107,11 +107,6 @@ PYTHONPATH=. python3 -m validation.build_blaze_calibration \
 
 Hβ / clean-order diagnostic fits: `python -m validation.fit_hbeta_order_blaze --help`.
 
-### Notes on execution environment
-
-- In this Cursor environment, **NumPy/SciPy segfault inside the sandbox**.
-  - Running Python commands **outside the sandbox** works.
-  - If you hit `exit code 139`, rerun commands with appropriate permissions in Cursor.
 
 ### References
 
