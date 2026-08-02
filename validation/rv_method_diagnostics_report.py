@@ -20,8 +20,11 @@ Plots (written to ``--out-dir``):
    ``--teff-bin-lo`` to ``--teff-bin-hi`` (defaults in ``config``), not sample quantiles, so the
    same bin edges apply to every run.
 
-Also writes ``method_comparison_per_exposure.csv`` with one row per diagnostics file and
-``binned_high_err_fraction_vs_teff.csv`` for the fraction plot.
+Also writes ``method_comparison_per_exposure.csv`` with one row per diagnostics file,
+``binned_high_err_fraction_vs_teff.csv`` for the fraction plot, and
+``binned_method_coverage_vs_teff.csv`` (N_total vs N_finite / ``frac_finite`` per method).
+Optional ``--with-fusion`` adds calibrated fusion columns (``rv_accepted``, ``reject_reason``,
+``rv_calibrated_kms``, …) via ``darkhunter_rv.method_fusion.fuse_exposure``.
 
 **Per-exposure RVs** come from ``darkhunter_rv.pipeline._weighted_method_rv_from_rows`` (same rules
 as the pipeline: QC, min chunk counts, etc.). **Scatter comparison plots** additionally require each
@@ -82,6 +85,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from darkhunter_rv import config as dh_config  # noqa: PLC2701
 from darkhunter_rv.method_evaluation import exposure_method_flags  # noqa: PLC2701
+from darkhunter_rv.method_fusion import fuse_exposure  # noqa: PLC2701
 from darkhunter_rv.method_regions import (  # noqa: PLC2701
     region_mask_applicable as _region_mask_applicable,
     region_strong_lines_applicable as _region_strong_lines_applicable,
@@ -259,6 +263,70 @@ def _binned_high_err_fraction_table(
     return pd.DataFrame(rows)
 
 
+
+def _coverage_bin_stats(rv: np.ndarray, mbin: np.ndarray) -> tuple[int, int, float, float]:
+    """N_total in bin, N_finite RV, frac_finite, Poisson σ on fraction."""
+    n = int(np.sum(mbin))
+    if n <= 0:
+        return 0, 0, float("nan"), float("nan")
+    r = np.asarray(rv, float)[mbin]
+    k = int(np.sum(np.isfinite(r)))
+    f = float(k) / float(n)
+    sf = float(np.sqrt(max(f * (1.0 - f), 0.0) / float(n)))
+    return n, k, f, sf
+
+
+def _binned_method_coverage_table(
+    teff: np.ndarray,
+    rv_mask: np.ndarray,
+    rv_tpl: np.ndarray,
+    rv_sl: np.ndarray,
+    n_bins: int,
+    *,
+    teff_bin_lo: float,
+    teff_bin_hi: float,
+) -> pd.DataFrame:
+    """Per Teff bin: N_total exposures vs N_finite stack RV per method (coverage, not frac_bad).
+
+    Denominator is all exposures with finite Teff in the bin, including those with NaN method RVs.
+    """
+    t = np.asarray(teff, float)
+    rm = np.asarray(rv_mask, float)
+    rt = np.asarray(rv_tpl, float)
+    rs = np.asarray(rv_sl, float)
+    ok_t = np.isfinite(t)
+    edges = _uniform_teff_bin_edges(n_bins, teff_bin_lo, teff_bin_hi)
+    rows: list[dict] = []
+    for i in range(len(edges) - 1):
+        lo, hi = float(edges[i]), float(edges[i + 1])
+        if i < len(edges) - 2:
+            mbin = (t >= lo) & (t < hi)
+        else:
+            mbin = (t >= lo) & (t <= hi)
+        mbin &= ok_t
+        n_tot, k_m, f_m, s_m = _coverage_bin_stats(rm, mbin)
+        _, k_t, f_t, s_t = _coverage_bin_stats(rt, mbin)
+        _, k_s, f_s, s_s = _coverage_bin_stats(rs, mbin)
+        rows.append(
+            {
+                "bin_lo": lo,
+                "bin_hi": hi,
+                "bin_center": 0.5 * (lo + hi),
+                "n_total": n_tot,
+                "n_finite_mask": k_m,
+                "frac_finite_mask": f_m,
+                "sigma_frac_poisson_mask": s_m,
+                "n_finite_template": k_t,
+                "frac_finite_template": f_t,
+                "sigma_frac_poisson_template": s_t,
+                "n_finite_strong_lines": k_s,
+                "frac_finite_strong_lines": f_s,
+                "sigma_frac_poisson_strong_lines": s_s,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _plot_high_err_fraction_vs_teff(
     btab: pd.DataFrame,
     max_err: float,
@@ -348,6 +416,11 @@ def main(argv: list[str] | None = None) -> int:
         default=float(dh_config.COMPARISON_REPORT_TEFF_BIN_HI_K),
         help="High edge (K) of fixed equal-width Teff bins for the high-σ fraction plot/CSV.",
     )
+    ap.add_argument(
+        "--with-fusion",
+        action="store_true",
+        help="Add method_fusion calibrated columns (rv_accepted, reject_reason, rv_calibrated_kms, …).",
+    )
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
 
@@ -412,23 +485,41 @@ def main(argv: list[str] | None = None) -> int:
             if lr is not None:
                 leg_rv, leg_e = lr
 
-        rows_out.append(
-            {
-                "diagnostics_csv": str(p),
-                "basename": basename,
-                "gaia_source_id": gid,
-                "teff": teff,
-                "log10_median_mask_ccf_peak_snr": log10_snr,
-                "mask_rv_kms": rv_m,
-                "mask_err_kms": er_m,
-                "template_rv_kms": rv_t,
-                "template_err_kms": er_t,
-                "strong_lines_rv_kms": rv_sl,
-                "strong_lines_err_kms": er_sl,
-                "legacy_rv_kms": leg_rv,
-                "legacy_err_kms": leg_e,
-            }
-        )
+        row = {
+            "diagnostics_csv": str(p),
+            "basename": basename,
+            "gaia_source_id": gid,
+            "teff": teff,
+            "log10_median_mask_ccf_peak_snr": log10_snr,
+            "mask_rv_kms": rv_m,
+            "mask_err_kms": er_m,
+            "template_rv_kms": rv_t,
+            "template_err_kms": er_t,
+            "strong_lines_rv_kms": rv_sl,
+            "strong_lines_err_kms": er_sl,
+            "legacy_rv_kms": leg_rv,
+            "legacy_err_kms": leg_e,
+            "median_mask_ccf_peak_snr": snr_m,
+            "mask_valid": bool(fl["mask_valid"]),
+            "template_valid": bool(fl["template_valid"]),
+            "strong_lines_valid": bool(fl["strong_lines_valid"]),
+        }
+        if args.with_fusion:
+            fus = fuse_exposure(fl, teff=teff)
+            row.update(
+                {
+                    "adopted_method_v2": fus["adopted_method_v2"],
+                    "rv_calibrated_kms": fus["rv_calibrated_kms"],
+                    "sigma_eff_kms": fus["sigma_eff_kms"],
+                    "rv_accepted": bool(fus["rv_accepted"]),
+                    "reject_reason": fus["reject_reason"],
+                    "inter_method_spread_kms": fus["inter_method_spread_kms"],
+                    "mask_ccf_rv_calibrated_kms": fus["mask_ccf_rv_calibrated_kms"],
+                    "template_fft_rv_calibrated_kms": fus["template_fft_rv_calibrated_kms"],
+                    "strong_lines_rv_calibrated_kms": fus["strong_lines_rv_calibrated_kms"],
+                }
+            )
+        rows_out.append(row)
 
     tab = pd.DataFrame(rows_out)
     tab.to_csv(args.out_dir / "method_comparison_per_exposure.csv", index=False)
@@ -548,6 +639,17 @@ def main(argv: list[str] | None = None) -> int:
         teff_bin_lo=args.teff_bin_lo,
         teff_bin_hi=args.teff_bin_hi,
     )
+
+    cov_tab = _binned_method_coverage_table(
+        teff,
+        tab["mask_rv_kms"].values,
+        tab["template_rv_kms"].values,
+        tab["strong_lines_rv_kms"].values,
+        args.teff_bins,
+        teff_bin_lo=args.teff_bin_lo,
+        teff_bin_hi=args.teff_bin_hi,
+    )
+    cov_tab.to_csv(args.out_dir / "binned_method_coverage_vs_teff.csv", index=False)
 
     logging.info("Wrote report under %s", args.out_dir.resolve())
     return 0
