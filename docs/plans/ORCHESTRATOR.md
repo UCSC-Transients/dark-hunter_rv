@@ -604,6 +604,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | P0-MERGE-90 | **done** | main `dbdcdc0` / [#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90) | step 06 complete; #43/#91–#93 closed |
 | 2026-08-02 | (policy) | human grill locked | local §0.6 | Shared-worktree clash → kill; relaunch in isolated worktrees |
 | 2026-08-02 | (launch) | 4 cards parallel (wt) | — | STRONG-QA, MASK-DEPLOY(thin), TEMPLATE-OFFSETS, EPOCH-SPIKE |
+| 2026-08-02 | MASK-DEPLOY | **done** (thin) | `5fd36fa` on `step/02a-bias-defer-verify` | Jun-16 bias verified (364 keys); rebuild deferred; ziggy §12.1 |
 
 ---
 
