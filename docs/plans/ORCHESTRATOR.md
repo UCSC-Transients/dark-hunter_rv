@@ -233,14 +233,33 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 ### Progress checklist (orchestrator maintains)
 
 - [x] **P0a** PR #90 CI green + merged; step 06 → complete; INDEX updated
-- [ ] **P0b** Plan commits (ORCHESTRATOR / ATTACK_ORDER / step 11) landed on main via follow-up docs PR
-- [ ] **P0c** `bias_statistics.txt` rebuilt for subchunks_8 + committed; ziggy refit noted/done
+- [ ] **P0b** Plan commits held local (`docs/orchestrator-post-90`); land in **first Phase 1+ PR** (no separate Phase 0 PR)
+- [~] **P0c** Keep committed Jun-16 `bias_statistics.txt` (s8). **Fresh rebuild deferred to pre-final product.** Ziggy: alert human only (see §12.1)
 - [ ] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done; step 10 → complete when accepted
 - [ ] **P1** Three absolute lanes meet exit criteria (§4)
 - [ ] **P2** 08 lite report + 01 cool-precision closeout
 - [ ] **P3** Fusion merged; adopted plots merged
 - [ ] **P4** Step 11 v1 merged; 05a short-pair report uses matrix
-- [ ] **P5** Deferred items only after P3–P4
+- [ ] **P5** 02b + SB2 (reuse untracked WIP) + 08-full — **do**, not defer
+
+### 0.6 Human session policy (2026-08-02)
+
+Binding for this orchestrator run (resume-safe):
+
+| Topic | Decision |
+|-------|----------|
+| P0b docs | Hold push; include in first PR at/after Phase 1 |
+| Bias rebuild | Keep current file; rebuild before final product |
+| Ziggy | Never run; chat alert + log in this file (§10 / §12.1). Pause card if ziggy output required |
+| Issue #87 | Leave closed; finish 10c; comment results; mark step 10 complete when verified |
+| Step 11 issue | Create on start (`UCSC-Transients/dark-hunter_rv`) |
+| Agent control | Orchestrator chooses launch/kill/parallel |
+| Run length | Through program DoD including Phase 5 (02b, SB2, 08-full) |
+| Git | `[AI Checkpoint]` local commits only — no PR for checkpoints |
+| PRs | No Phase 0 PR. **PR required per Phase 1–5.** Significant cards also get PRs (multi-PR per card OK if sandboxed). Ask human before push/PR |
+| SB2 | Inventory + **reuse** existing untracked `sb2*` code |
+| INDEX/ORCHESTRATOR | Orchestrator owns after card returns; subagents update **their step md only** |
+| Worktrees | **Each subagent MUST use an isolated `git worktree`** — never `git checkout` the primary orchestrator worktree |
 
 ---
 
@@ -583,6 +602,8 @@ Subagents / orchestrator: append a line when a card finishes.
 |------------|------|--------|-----------|-------|
 | 2026-08-01 | (bootstrap) | plans written | local | #90 CI in progress; ORCHESTRATOR.md created |
 | 2026-08-02 | P0-MERGE-90 | **done** | main `dbdcdc0` / [#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90) | step 06 complete; #43/#91–#93 closed |
+| 2026-08-02 | (policy) | human grill locked | local §0.6 | Shared-worktree clash → kill; relaunch in isolated worktrees |
+| 2026-08-02 | (launch) | 4 cards parallel (wt) | — | STRONG-QA, MASK-DEPLOY(thin), TEMPLATE-OFFSETS, EPOCH-SPIKE |
 
 ---
 
@@ -605,7 +626,7 @@ Are mask+template(+strong) baseline exits met?
   NO → finish P1 cards
   YES → FUSION-03 then PLOTS-04; finish EPOCH-MATRIX
 
-Phase 5 only if human asks or P3–P4 done.
+Phase 5: do 02b + SB2 (reuse WIP) + 08-full after P3–P4.
 ```
 
 ---
@@ -618,3 +639,10 @@ Phase 5 only if human asks or P3–P4 done.
 - Any change to frozen continuum or `subchunks_8`
 - Expanding strong-line list / Q recalibration campaign
 - Enabling `epoch_ccf` as default adopted input
+- Pre-final `bias_statistics.txt` rebuild (P0c deferred)
+
+### 12.1 Ziggy alert log (append when a card would run ziggy)
+
+| When (UTC) | Card | Commands (do not run without human) | Need output to continue? | Status |
+|------------|------|--------------------------------------|--------------------------|--------|
+| 2026-08-02 | MASK-DEPLOY | See step 02 plan “ziggy TODO”; `refit_all_per_object_parallel.sh` on ziggy | No (defer OK) | **ALERT — waiting human** |
