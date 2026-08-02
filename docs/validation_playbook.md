@@ -18,6 +18,7 @@
   - `python3 validation/benchmark_broad_lines.py --out-dir validation_output/broad_line`
 - Cool high-S/N mask precision (step 01; 0.1 km/s goal):
   - `python -m validation.benchmark_cool_precision --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/benchmark_cool_precision`
+  - **0.1 km/s interpretation:** north star is single-epoch calibrated mask **σ_RV** (`subchunks_8` campaign median **0.0189 km/s** — met). Also track Phase A APF–APF relative gate (median still ~0.3 km/s on overlap). `chunk_scatter_kms` from the cool benchmark is a raw pre-stack diagnostic (typically ≫ 0.1) and is **not** the epoch-precision pass/fail. Mask lane deploy: `calibration/mask_lane_deploy.md`.
 - **Phase A baseline** (overlap inventory + calibration gates; regression vs `calibration/phase_a_baseline/reference_manifest.json`):
   - `python -m validation.rv_phase_a_baseline --master calibration/literature_rv_master.csv --summary-dir output --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/rv_phase_a_baseline`
   - Absolute gate (APF vs literature, |ΔRV| < 1 km/s): use `--no-bias-correction-applied` after a `--no-bias` pipeline rerun on overlap stars.
@@ -51,6 +52,11 @@
   - Omit `--no-bias` to apply repo [`bias_statistics.txt`](bias_statistics.txt) (match legacy if it was debiased). Add `--no-bias` only for an explicit no-debias comparison.
   - Pipeline flags go **after a lone `--`**.
   - **Multi-star:** use a broad glob (e.g. `Gaia_DR3_*.txt`) and **`--multi-star`**; reports go under `report-dir/<source_id>/`. Optional `--min-epochs 10` and `--write-combined-csv`.
+- **Literature RV cross-check (step 08 lite; El-Badry master vs mask/template):**
+  - `python -m validation.compare_literature_rvs --master calibration/literature_rv_master.csv --diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_cool_vsini12_mhfix/*_diagnostics.csv' --report-dir validation_output/literature_crosscheck_lite --copy-key-table calibration/literature_crosscheck_lite/per_star_bias_rms.csv`
+  - Optional: add `strong_lines` via `--methods mask_ccf,template_fft,strong_lines`.
+  - Outputs (gitignored): `validation_output/literature_crosscheck_lite/{REPORT.md,epoch_pairs.csv,per_star_bias_rms.csv,orbit_qa.csv}`; tracked key table: `calibration/literature_crosscheck_lite/per_star_bias_rms.csv`.
+  - Nearest-BJD join on `gaia_dr3_id`; LAMOST/RAVE deferred to 08-full.
 - Interpretation plots + text (after diagnose, or on existing CSVs):
   - `env PYTHONPATH=. python3 validation/legacy_interpretation_report.py --report-dir validation_output/diagnose_legacy --pipeline-summary validation_output/pipeline_rerun/Gaia_DR3_<id>_summary.txt --legacy-summary ../output/<id>_summary.txt`
 
