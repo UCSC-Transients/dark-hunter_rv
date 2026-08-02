@@ -618,6 +618,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | BENCH-01 | **done** (waivers) | `5c352e4` on `step/01-cool-closeout` | σ_RV north star MET; chunk-scatter/Phase A waived; #38 commented |
 | 2026-08-02 | LIT-08-LITE | **done** | `a6ffe75` on `step/08-external-rv-crosscheck` | n_stars=4; compare_literature_rvs CLI; #45 commented |
 | 2026-08-02 | FUSION-03 | **done** | `9de6c68` on `step/03-method-fusion-coverage` | method_fusion v1 + coverage; 25 tests; #40 commented |
+| 2026-08-02 | PLOTS-04 | launched | `step/04-adopted-rv-match-plots` @ fusion tip | — |
 
 ---
 
