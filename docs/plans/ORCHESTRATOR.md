@@ -244,13 +244,14 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 
 ### NEXT (orchestrator — 2026-08-02 post-#101)
 
-1. Soft residuals (code/docs follow-ups; ask before push/PR):
-   - **11d** product tags / optional pipeline rows (`epoch_ccf_rel` / `epoch_ccf_abs_fill`); do **not** enable as default adopted RV without human OK
-   - **SB2** Gaia NSS cohort table + fuse `sb2_candidate` into pipeline diagnostics
+1. **PR `phase/soft-residuals`:** post-#101 docs (#102 content) + 11d enrich + SB2 pipeline fuse — **this wave**.
+2. Soft residuals still open after that PR:
+   - **11d** default adopt = human gate only (enrich hook lands in soft-residuals)
+   - **SB2** Gaia NSS cohort fraction table (`validation/sb2_nss_cohort_report.py` TODO)
    - **Trust 02b** campaign σ_RV / relative-gate A/B vs IVW-only
    - **08** expand lit overlap to ≥10 stars when more APF diagnostics exist
-2. Pre-final: bias rebuild + ziggy (§12.1) when human says go
-3. Close/comment issues #38–#45 / #94 as appropriate when residuals land
+3. Pre-final: bias rebuild + ziggy (§12.1) when human says go
+4. Close/comment issues #38–#45 / #94 as appropriate when residuals land
 
 ### Branch map (historical; stack landed)
 
@@ -640,6 +641,8 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | SB2-07 | **done** (partial) | `7129124` on `step/07-sb2-search` | WIP tracked; BiGauss APIs fixed; NSS/pipeline fuse residual |
 | 2026-08-02 | LIT-08-FULL | **done PARTIAL** | `fec76dc` on `step/08-external-rv-full` | LAMOST/RAVE+overlay; n_lit=4 blocker |
 | 2026-08-03 | PR wave | opened stacked | #95–#99 | Merge Phase 1→5 in order; bases are prior phase branches |
+| 2026-08-02 | (post-#101) | stack on main | `c6801f7` / [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | soft residuals remain |
+| 2026-08-02 | soft-residuals | **PR** | `phase/soft-residuals` | docs post-#101 + 11d enrich + SB2 pipeline fuse; supersedes #102 |
 | 2026-08-02 | #95–#99 → #101 | **merged to main** | `c6801f7` | Full stack on `main` |
 | 2026-08-02 | docs status | in flight | `docs/post-101-status` | INDEX/ORCHESTRATOR/ATTACK_ORDER post-merge |
 | 2026-08-02 | 11d wiring | **done** (local) | `f14f0a5` on `step/11d-product-wiring` | enrich hook + fusion docs; default-adopt still human |

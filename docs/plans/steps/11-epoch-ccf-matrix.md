@@ -1,7 +1,7 @@
 ---
 step_id: 11-epoch-ccf-matrix
 phase: C
-status: in_progress  # 11a–c on main (#95/#98→#101); 11d fusion-doc + optional pipeline rows remain
+status: in_progress  # 11a–d enrich done; default adopt still human gate
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/94
 branches:
   - step/11-epoch-ccf-matrix
