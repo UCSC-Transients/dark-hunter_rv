@@ -239,13 +239,13 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P1** Absolute lanes OK for now: mask bias verified (rebuild deferred), template offsets, strong tests+Q (fresh `ivw_n=` diagnostics still optional). Epoch spike done (#94); matrix CLI = Phase 4
 - [x] **P2** 08 lite done (`a6ffe75`, n_stars=4) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
 - [x] **P3** Fusion + adopted plots **local done** (`9de6c68`, `fa0578c`); merge/PR pending human
-- [ ] **P4** Matrix CLI **local done** (`be9b0a3`); 05a short-pair next; merge pending
-- [ ] **P5** 02b + SB2 (reuse untracked WIP) + 08-full — **do**, not defer
+- [x] **P4** Matrix CLI (`be9b0a3`) + short-pair QC (`47caa15`, σ-scale≈1.28 MAD); merge/PR pending
+- [ ] **P5** 02b + SB2 (reuse WIP) + 08-full — launching
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human PRs:** Phase 1–3 stacks still waiting go.
-2. SHORTPAIR-05A in flight → then Phase 5 (02b, SB2, 08-full)
+1. **Human PRs:** Phases 1–4 stacks still waiting go (significant backlog).
+2. Phase 5 parallel: TRUST-02B, SB2-07, LIT-08-FULL
 3. Pre-final bias rebuild + ziggy still human-gated
 
 ### 0.6 Human session policy (2026-08-02)
@@ -623,6 +623,8 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | EPOCH-MATRIX | launched | `step/11-epoch-ccf-matrix-cli` | Phase 4 |
 | 2026-08-02 | EPOCH-MATRIX | **done** | `be9b0a3` on `step/11-epoch-ccf-matrix-cli` | real star 468391…; diag~0; SHORTPAIR next |
 | 2026-08-02 | SHORTPAIR-05A | launched | `step/05a-short-pair-calibration` | — |
+| 2026-08-02 | SHORTPAIR-05A | **done** | `47caa15` on `step/05a-short-pair-calibration` | σ-scale≈1.28 MAD; #42 commented |
+| 2026-08-02 | (P5 launch) | TRUST-02B + SB2-07 + LIT-08-FULL | — | parallel worktrees |
 
 ---
 

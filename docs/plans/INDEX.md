@@ -17,7 +17,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | **mask_ccf** | 01, 02a, 09 | Defaults → `subchunks_8`; bias keep Jun-16; **step 01 complete (waivers)** |
 | **template_fft** | 10 | **Complete** (#88 + 10c offsets `method_rv_offsets.txt`) |
 | **strong_lines** | 06 | **Complete** ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) — Hβ-primary Balmer; metals + Q×SNR² IVW |
-| **epoch_ccf** (relative) | 11 | **matrix CLI done** (local `be9b0a3`); short-pair QC next ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
+| **epoch_ccf** (relative) | 11 | **11a–c + 05a local done**; 11d product tags / default adopt still open ([#94](https://github.com/UCSC-Transients/dark-hunter_rv/issues/94)) |
 | **fusion / adoption** | 03, 04 | **03+04 complete locally** (`9de6c68`, `fa0578c`); PRs pending |
 
 | Step | Plan | Status | Issue | Branch(es) | Merged |
@@ -27,7 +27,7 @@ Workflow: [WORKFLOW.md](WORKFLOW.md)
 | 02 Chunk weights / subchunks | [steps/02-chunk-weights-subchunks.md](steps/02-chunk-weights-subchunks.md) | in_progress (02a verified; rebuild deferred pre-final; 02b later) | [#39](https://github.com/astrofoley/dark-hunter_rv/issues/39) | `step/02a-subchunk-study`, `step/02a-bias-defer-verify`, `step/02b-trust-weights-stack` | — |
 | 03 Method fusion / coverage | [steps/03-method-fusion-coverage.md](steps/03-method-fusion-coverage.md) | **complete** (local) | [#40](https://github.com/UCSC-Transients/dark-hunter_rv/issues/40) | `step/03-method-fusion-coverage` | local `9de6c68` |
 | 04 Adopted-RV match plots | [steps/04-adopted-rv-match-plots.md](steps/04-adopted-rv-match-plots.md) | **complete** (local; visual residual) | [#41](https://github.com/UCSC-Transients/dark-hunter_rv/issues/41) | `step/04-adopted-rv-match-plots` | local `fa0578c` |
-| 05 Short-pair QC | [steps/05-short-pair-epoch-ccf.md](steps/05-short-pair-epoch-ccf.md) | in_progress (05a) | [#42](https://github.com/UCSC-Transients/dark-hunter_rv/issues/42) | `step/05a-short-pair-calibration` | — |
+| 05 Short-pair QC | [steps/05-short-pair-epoch-ccf.md](steps/05-short-pair-epoch-ccf.md) | **complete** (05a local) | [#42](https://github.com/UCSC-Transients/dark-hunter_rv/issues/42) | `step/05a-short-pair-calibration` | local `47caa15` |
 | 06 Strong-line line list | [steps/06-strong-line-line-list.md](steps/06-strong-line-line-list.md) | **complete** | [#43](https://github.com/UCSC-Transients/dark-hunter_rv/issues/43), [#91](https://github.com/UCSC-Transients/dark-hunter_rv/issues/91)–[#93](https://github.com/UCSC-Transients/dark-hunter_rv/issues/93) | `step/06-strong-line-teff-sweep` | 2026-08-02 ([#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)) |
 | 07 SB2 search | [steps/07-sb2-search.md](steps/07-sb2-search.md) | pending | [#44](https://github.com/astrofoley/dark-hunter_rv/issues/44) | `step/07a-sb2-detection`, `step/07b-sb2-reporting` | — |
 | 08 External RV cross-check | [steps/08-external-rv-crosscheck.md](steps/08-external-rv-crosscheck.md) | in_progress (**lite done**; full later) | [#45](https://github.com/UCSC-Transients/dark-hunter_rv/issues/45) | `step/08-external-rv-crosscheck` | lite local `a6ffe75` |
