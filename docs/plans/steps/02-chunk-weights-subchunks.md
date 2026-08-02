@@ -47,10 +47,41 @@ Replace arbitrary whole-order chunks with validated sub-chunking and post-debias
 - [x] Ruled out: N=5,6,7,>8; per-order n=2/3/4 greedy mix (worse than uniform s8 under production stack)
 - [x] **Production defaults:** `subchunks_8.yaml` in config + refit scripts
 - [x] `calibration/bias_train.txt`, `scripts/rebuild_mask_bias.sh`, `calibration/mask_lane_deploy.md`
-- [ ] Rebuild + commit `bias_statistics.txt` for subchunks_8
-- [ ] Refit catalog on ziggy
+- [x] **Debias table verify (2026-08):** committed `bias_statistics.txt` is Jun-16 `subchunks_8` closeout (`a312993`); 364 `order_sub` keys, sub index 0–7; `tests/validation/test_build_bias_set.py` 5 passed. **Do not rebuild now.**
+- [ ] ~~Rebuild + commit `bias_statistics.txt` for subchunks_8~~ → **DEFERRED pre-final product** (keep current Jun-16 committed table)
+- [ ] Refit catalog on ziggy → **BLOCKED pending human** (do not run ziggy from agent)
 
-### 02b (`step/02b-trust-weights-stack`) — **pending**
+### 02a deferred / human TODO
+
+**Rebuild bias (pre-final only):** keep current committed Jun-16 `bias_statistics.txt`. Fresh rebuild is deferred until immediately before final product ship — not urgent for Phase 0c / 1A thin card.
+
+**Refit catalog (ziggy) — TODO for human** (exact commands from `calibration/mask_lane_deploy.md`):
+
+```bash
+# On ziggy: rebuild mask bias (when human approves pre-final rebuild)
+cd /data2/darkhunter/dark-hunter_rv
+git pull
+PY=/home/marley/anaconda2/envs/gaia-env/bin/python \
+  OUT=/data2/darkhunter/dark-hunter_rv/output \
+  bash scripts/rebuild_mask_bias.sh
+
+# Then refit catalog
+cd /data2/darkhunter/dark-hunter_rv
+bash scripts/refit_all_per_object_parallel.sh
+
+# Or single star:
+STAR_ID=1702370142434513152 bash scripts/refit_star_rvs.sh
+```
+
+Local equivalents (not ziggy; for reference only):
+
+```bash
+cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
+bash scripts/rebuild_mask_bias.sh
+bash scripts/refit_all_per_object_parallel.sh
+```
+
+### 02b (`step/02b-trust-weights-stack`) — **pending** (out of scope this thin card)
 
 - [ ] Implement trust weights (residual vs robust mean, telluric fraction, CCF quality) scaling IVW in `pipeline.py`
 - [ ] Add weight columns to diagnostics CSV
@@ -84,7 +115,8 @@ CHUNK_LAYOUT=calibration/chunk_layouts/subchunks_8.yaml bash scripts/refit_star_
 ## Acceptance criteria
 
 - [x] Subchunk study shows improved median σ_RV vs subchunks_4 on common cohort
-- [ ] Production layout + bias committed and refit on ziggy
+- [x] Production layout + committed Jun-16 `subchunks_8` bias verified (rebuild deferred pre-final)
+- [ ] Ziggy catalog refit — human TODO (commands above); agent must not run ziggy
 - [ ] Trust-weighted stack (02b) — future; not blocking step 10
 
 ## Tests / validation
