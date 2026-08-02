@@ -65,8 +65,9 @@ DEFAULT_QC = {
 
 
 DEFAULT_TRUST_WEIGHTS = {
-    # Opt-in: when enabled, exposure / method IVW stacks scale 1/σ² by trust_weight.
-    "enabled": False,
+    # Default on (HUMAN_GATES #2): IVW stacks scale 1/σ² by trust_weight.
+    # Identity trust (all t_i=1) recovers plain IVW; CLI --no-trust-weights disables.
+    "enabled": True,
     "residual_scale_kms": 5.0,
     "residual_power": 2.0,
     "telluric_soft_max": 0.10,
@@ -78,7 +79,7 @@ DEFAULT_TRUST_WEIGHTS = {
 
 
 def load_trust_weights_config(path: Path) -> Dict:
-    """Load ``trust_weights`` block from QC YAML (defaults = opt-in off)."""
+    """Load ``trust_weights`` block from QC YAML (defaults = enabled on)."""
     cfg = dict(DEFAULT_TRUST_WEIGHTS)
     p = Path(path)
     if p.exists() and yaml is not None:
@@ -86,7 +87,7 @@ def load_trust_weights_config(path: Path) -> Dict:
         tw = loaded.get("trust_weights") or {}
         if isinstance(tw, dict):
             cfg.update(tw)
-    cfg["enabled"] = bool(cfg.get("enabled", False))
+    cfg["enabled"] = bool(cfg.get("enabled", True))
     for key in (
         "residual_scale_kms",
         "residual_power",

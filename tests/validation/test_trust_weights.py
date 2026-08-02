@@ -11,11 +11,16 @@ from darkhunter_rv.pipeline import _weighted_method_rv_from_rows
 
 
 @pytest.mark.validation
-def test_load_trust_weights_defaults_opt_in_off():
+def test_load_trust_weights_defaults_enabled_on():
     cfg = qc.load_trust_weights_config(Path("order_chunk_qc.yaml"))
-    assert cfg["enabled"] is False
+    assert cfg["enabled"] is True
     assert cfg["residual_scale_kms"] > 0
     assert cfg["telluric_hard_max"] > cfg["telluric_soft_max"]
+
+
+@pytest.mark.validation
+def test_default_trust_weights_constant_enabled():
+    assert qc.DEFAULT_TRUST_WEIGHTS["enabled"] is True
 
 
 @pytest.mark.validation

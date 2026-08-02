@@ -105,12 +105,15 @@ def test_recommend_adopted_rv_uses_loose_first_applicable_when_all_sigma_large()
         "mask_valid": True,
         "template_valid": True,
         "strong_lines_valid": True,
+        "epoch_ccf_abs_fill_valid": False,
         "mask_rv_kms": 0.0,
         "mask_err_kms": 5.0,
         "template_rv_kms": 0.1,
         "template_err_kms": 4.0,
         "strong_lines_rv_kms": 0.0,
         "strong_lines_err_kms": 3.0,
+        "epoch_ccf_abs_fill_rv_kms": float("nan"),
+        "epoch_ccf_abs_fill_err_kms": float("nan"),
         "median_mask_ccf_peak_snr": 10.0,
     }
     ad = me.recommend_adopted_rv(
@@ -121,6 +124,76 @@ def test_recommend_adopted_rv_uses_loose_first_applicable_when_all_sigma_large()
     )
     assert ad["adopted_method"] == "mask_ccf"
     assert ad["adopted_err_kms"] == pytest.approx(5.0)
+
+
+def test_recommend_adopted_rv_falls_through_to_epoch_ccf_abs_fill():
+    fl = {
+        "mask_valid": False,
+        "template_valid": False,
+        "strong_lines_valid": False,
+        "epoch_ccf_abs_fill_valid": True,
+        "mask_rv_kms": float("nan"),
+        "mask_err_kms": float("nan"),
+        "template_rv_kms": float("nan"),
+        "template_err_kms": float("nan"),
+        "strong_lines_rv_kms": float("nan"),
+        "strong_lines_err_kms": float("nan"),
+        "epoch_ccf_abs_fill_rv_kms": 12.5,
+        "epoch_ccf_abs_fill_err_kms": 0.8,
+        "median_mask_ccf_peak_snr": 10.0,
+    }
+    ad = me.recommend_adopted_rv(
+        fl,
+        teff=6000.0,
+        log10_median_mask_ccf_peak_snr=0.7,
+        max_sigma_kms=2.5,
+    )
+    assert ad["adopted_method"] == "epoch_ccf_abs_fill"
+    assert ad["adopted_rv_kms"] == pytest.approx(12.5)
+    assert ad["adopted_err_kms"] == pytest.approx(0.8)
+
+
+def test_recommend_adopted_rv_prefers_strong_over_epoch_ccf():
+    fl = {
+        "mask_valid": False,
+        "template_valid": False,
+        "strong_lines_valid": True,
+        "epoch_ccf_abs_fill_valid": True,
+        "mask_rv_kms": float("nan"),
+        "mask_err_kms": float("nan"),
+        "template_rv_kms": float("nan"),
+        "template_err_kms": float("nan"),
+        "strong_lines_rv_kms": 1.0,
+        "strong_lines_err_kms": 0.4,
+        "epoch_ccf_abs_fill_rv_kms": 99.0,
+        "epoch_ccf_abs_fill_err_kms": 0.1,
+        "median_mask_ccf_peak_snr": 10.0,
+    }
+    ad = me.recommend_adopted_rv(
+        fl,
+        teff=6000.0,
+        log10_median_mask_ccf_peak_snr=0.7,
+        max_sigma_kms=2.5,
+    )
+    assert ad["adopted_method"] == "strong_lines"
+
+
+def test_exposure_method_flags_reads_epoch_ccf_abs_fill_row(monkeypatch):
+    monkeypatch.setattr("darkhunter_rv.config.MIN_MASK_CCF_CHUNKS_FOR_STACK", 1)
+    monkeypatch.setattr("darkhunter_rv.config.MIN_TEMPLATE_FFT_CHUNKS_FOR_STACK", 1)
+    rows = [
+        _row("mask_ccf", "0_a", 0.0, 1.0),
+        {
+            "method": "epoch_ccf_abs_fill",
+            "chunk_key": "all",
+            "rv_kms": 7.0,
+            "rv_err_kms": 0.5,
+            "qc_pass": True,
+        },
+    ]
+    fl = me.exposure_method_flags(rows)
+    assert fl["epoch_ccf_abs_fill_valid"]
+    assert fl["epoch_ccf_abs_fill_rv_kms"] == pytest.approx(7.0)
 
 
 def test_flags_with_method_offsets_shifts_template_and_strong():

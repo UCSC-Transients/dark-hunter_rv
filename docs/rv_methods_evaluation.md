@@ -30,8 +30,9 @@ Implemented in `darkhunter_rv.method_evaluation.exposure_method_flags`:
 
 `darkhunter_rv.method_evaluation.recommend_adopted_rv` (used by the overlap report and, with multi-method pipeline runs, the main pipeline):
 
-- **Cascade** (preference order): `mask_ccf` → `template_fft` → `strong_lines`.
-- Each method must be **valid** (see table above) and **region-applicable** (`darkhunter_rv.method_regions`, same cuts as residual plots: Teff and log₁₀ median mask CCF peak S/N).
+- **Cascade** (preference order): `mask_ccf` → `template_fft` → `strong_lines` → `epoch_ccf_abs_fill`.
+- Each of the first three methods must be **valid** (see table above) and **region-applicable** (`darkhunter_rv.method_regions`, same cuts as residual plots: Teff and log₁₀ median mask CCF peak S/N).
+- `epoch_ccf_abs_fill` has **no** Teff/S/N region gate; it is valid when an abs-anchored fill method row is present (relative-only fills are never adopted).
 - Use the first method in that order with σ ≤ `ADOPTED_CASCADE_MAX_SIGMA_KMS` (default matches comparison-report cap, env `DARKHUNTER_ADOPTED_MAX_SIGMA_KMS`).
 - If none meet the σ cut, adopt the **first** applicable valid method in order and keep its (possibly large) σ.
 - If none apply: adopted fields are empty / NaN.
@@ -89,7 +90,7 @@ Same tool as legacy outliers: ``python -m validation.plot_legacy_outlier_orders`
 `tests/test_method_evaluation.py` covers stack rules, QC on single-row methods, adoption ordering, and the S/N median helper.
 `tests/test_method_fusion.py` covers tiered policy, bias/σ inflation, discordance reject, and coverage denominators.
 
-## Epoch–epoch CCF (relative / fill; not adopted)
+## Epoch–epoch CCF (relative / fill + systematics)
 
 Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matrix`) and WLS absolute fill when ≥1 abs anchor exists. Product tags:
 
@@ -98,20 +99,31 @@ Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matr
 | `epoch_ccf_rel` | WLS solution `v_hat` (relative ladder; may float zeropoint if zero anchors) |
 | `epoch_ccf_abs_fill` | Same `v_hat` only when abs-anchored; else NaN |
 | `epoch_ccf_abs_fill.csv` | Per-epoch table from the matrix CLI (always written) |
+| `epoch_ccf_abs_rel_discordant` | Pair flag when `|(A_i−A_j)−Δv_ij| > N·σ_combined` (default N=3); **flag only** |
 
-**Not default adopted RV.** `recommend_adopted_rv` cascade and fusion v2 (`--with-fusion`) stay mask → template → strong_lines. Epoch-CCF products must not replace that cascade without an explicit human accept of default-adopt policy.
+**Cascade:** `recommend_adopted_rv` includes `epoch_ccf_abs_fill` **after** `strong_lines`. Fusion v2 (`--with-fusion`) stays mask → template → strong_lines (no epoch_ccf tier yet).
+
+**Always run** for multi-epoch stars (campaign / systematics):
+
+```bash
+PYTHONPATH=. python -m validation.run_epoch_ccf_multi_epoch \
+  --data-root /Users/rfoley/darkhunter/rvs/data \
+  --out-root validation_output/epoch_ccf \
+  --abs-diagnostics-root output \
+  --enrich-diagnostics-root output
+```
+
+Pipeline can attach a precomputed fill via `--epoch-ccf-fill-csv`.
 
 ### Interaction with step 03 fusion
 
-Epoch fill is an **optional prior or post-fusion salvage**, not a cascade replacement:
+1. **Cascade salvage (v1):** when mask/template/strong fail, abs-anchored `epoch_ccf_abs_fill` can become the adopted RV.
+2. **Fusion v2:** fills remain optional salvage columns until fusion policy adds an epoch_ccf tier.
+3. **Discord flags** do not auto-override a successful cascade adopt.
 
-1. **Prior / salvage inputs (pre-fusion):** when mask/template/strong fail on a low-S/N epoch but the star has multi-epoch coverage, abs-anchored `epoch_ccf_abs_fill` can supply a finite RV for that exposure for downstream analysis. Prefer feeding fills as **extra calibrated columns** or salvage candidates — do not silently overwrite `adopted_method_v2`.
-2. **Post-fusion hole fill:** after fusion/rejection (`rv_accepted` false or no valid method), attach `epoch_ccf_abs_fill` only where anchors exist and fusion left a hole. Relative-only (`float_zeropoint`) stays QC / ΔRV, not absolute adopt.
-3. **Open policy:** whether fills run **before** fusion (salvage method inputs) or **after** (fill adopted holes only) remains an open step-11 decision. Until decided, use the opt-in enrich path below and keep fusion reports unchanged.
+### Diagnostics enrich
 
-### Opt-in diagnostics enrich
-
-When matrix artifacts exist, attach product columns (and optional method rows) to **copies** of diagnostics:
+When matrix artifacts exist, attach product columns (and method rows) to diagnostics copies or in-place via the multi-epoch runner:
 
 ```bash
 PYTHONPATH=. python -m validation.epoch_ccf_matrix \
@@ -120,7 +132,7 @@ PYTHONPATH=. python -m validation.epoch_ccf_matrix \
   --abs-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' \
   --out-dir validation_output/epoch_ccf/<id> \
   --enrich-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' \
-  --enrich-out-dir validation_output/epoch_ccf/<id>/enriched_diagnostics
+  --enrich-out-dir output
 ```
 
-`--enrich-no-method-rows` attaches columns only. Method rows `epoch_ccf_rel` / `epoch_ccf_abs_fill` (`chunk_key=all`) are ignored by the v1/v2 adopters today; they exist for salvage experiments and overlap/fusion prototyping.
+`--enrich-no-method-rows` attaches columns only. Method row `epoch_ccf_abs_fill` (`chunk_key=all`) is consumed by the v1 cascade.

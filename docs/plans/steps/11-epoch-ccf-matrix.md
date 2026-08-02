@@ -1,12 +1,13 @@
 ---
 step_id: 11-epoch-ccf-matrix
 phase: C
-status: complete  # opt-in enrich; default adopt declined (HUMAN_GATES)
+status: in_progress  # cascade after strong_lines; always-run + discord flags (HUMAN_GATES #1)
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/94
 branches:
   - step/11-epoch-ccf-matrix
   - step/11-epoch-ccf-matrix-cli
-merged: 2026-08-02 via #95/#98/#103 → #101; issue closed under HUMAN_GATES
+  - phase/gate-flips-epoch-trust
+merged: 2026-08-02 via #95/#98/#103 → #101; gate flips reopen adopt policy
 depends_on: [01-benchmark-cool-precision]
 blocks: [03-method-fusion-coverage]
 # Soft: fusion can consume epoch_ccf fills; matrix work can start before fusion

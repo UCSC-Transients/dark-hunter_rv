@@ -11,14 +11,15 @@ Example::
     --abs-diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \\
     --out-dir validation_output/epoch_ccf/468391369318487040
 
-  Opt-in enrich (does not change adopted RV)::
+  Enrich diagnostics so cascade can use epoch_ccf_abs_fill (after strong_lines)::
 
-  PYTHONPATH=. python -m validation.epoch_ccf_matrix \
-    --gaia-id 468391369318487040 \
-    --data-root /Users/rfoley/darkhunter/rvs/data \
-    --out-dir validation_output/epoch_ccf/468391369318487040 \
-    --enrich-diagnostics-glob 'output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \
-    --enrich-out-dir validation_output/epoch_ccf/468391369318487040/enriched_diagnostics
+  PYTHONPATH=. python -m validation.epoch_ccf_matrix \\
+    --gaia-id 468391369318487040 \\
+    --data-root /Users/rfoley/darkhunter/rvs/data \\
+    --out-dir validation_output/epoch_ccf/468391369318487040 \\
+    --abs-diagnostics-glob 'output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \\
+    --enrich-diagnostics-glob 'output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \\
+    --enrich-out-dir output
 """
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ if str(_REPO_ROOT) not in sys.path:
 from darkhunter_rv import continuum, io_utils
 from darkhunter_rv.epoch_ccf import (
     EpochPairCcfResult,
+    abs_rel_delta_discordant,
     build_relative_matrix_from_pairs,
     combine_relative_and_absolute,
     epoch_pair_ccf,
@@ -274,15 +276,18 @@ def run_matrix(
     max_grid_points: int | None = 16384,
     abs_method: str = "mask_ccf",
     sigma_ij_scale: float = 1.0,
+    discord_n_sigma: float = 3.0,
 ) -> dict:
     """
     Build and persist epoch CCF matrix (+ optional abs fill) for one star.
 
     Writes ``epoch_ccf_pairs.csv``, ``epoch_ccf_matrix.npz``, optional
-    ``epoch_ccf_abs_fill.csv``, and ``epoch_ccf_meta.json``.
+    ``epoch_ccf_abs_fill.csv``, ``epoch_ccf_vs_abs_delta.csv`` (with discordant
+    flags when abs anchors exist), and ``epoch_ccf_meta.json``.
 
     ``sigma_ij_scale`` multiplies off-diagonal formal ``sigma_ij`` (short-pair
     inflation from step 05a; default 1.0 = no change).
+    ``discord_n_sigma`` thresholds abs−abs vs CCF ΔRV inconsistency flags.
     """
     epochs = discover_epoch_spectra(data_root, gaia_id)
     if not epochs:
@@ -342,6 +347,7 @@ def run_matrix(
     fill_path = None
     compare_rows: list[dict] = []
     fill_result = None
+    meta_discord = {"n_abs_rel_pairs": 0, "n_discordant": 0}
     if abs_diagnostics_glob:
         abs_rv, abs_sig, used = load_abs_from_diagnostics(
             abs_diagnostics_glob,
@@ -375,25 +381,42 @@ def run_matrix(
         fill_path = out_dir / "epoch_ccf_abs_fill.csv"
         fill_df.to_csv(fill_path, index=False)
 
-        # Compare Δv_ij to A_i - A_j when both abs finite
+        # Compare Δv_ij to A_i - A_j when both abs finite; flag systematics discord
         for i in range(len(epochs)):
             for j in range(i + 1, len(epochs)):
                 if not (np.isfinite(abs_rv[i]) and np.isfinite(abs_rv[j])):
                     continue
                 if not np.isfinite(dv[i, j]):
                     continue
+                dv_abs = float(abs_rv[i] - abs_rv[j])
+                disc = abs_rel_delta_discordant(
+                    float(dv[i, j]),
+                    dv_abs,
+                    err_ccf_kms=float(sig[i, j]) if np.isfinite(sig[i, j]) else float("nan"),
+                    err_abs_i_kms=float(abs_sig[i]) if np.isfinite(abs_sig[i]) else float("nan"),
+                    err_abs_j_kms=float(abs_sig[j]) if np.isfinite(abs_sig[j]) else float("nan"),
+                    n_sigma=float(discord_n_sigma),
+                )
                 compare_rows.append(
                     {
                         "epoch_i": epoch_indices[i],
                         "epoch_j": epoch_indices[j],
                         "dv_ccf_kms": float(dv[i, j]),
-                        "dv_abs_kms": float(abs_rv[i] - abs_rv[j]),
-                        "residual_kms": float(dv[i, j] - (abs_rv[i] - abs_rv[j])),
+                        "dv_abs_kms": dv_abs,
+                        "residual_kms": float(disc["residual_kms"]),
                         "err_ccf_kms": float(sig[i, j]) if np.isfinite(sig[i, j]) else np.nan,
+                        "sigma_combined_kms": float(disc["sigma_combined_kms"]),
+                        "n_sigma_residual": float(disc["n_sigma_residual"]),
+                        "epoch_ccf_abs_rel_discordant": bool(disc["discordant"]),
+                        "discord_n_sigma": float(discord_n_sigma),
                     }
                 )
         if compare_rows:
             pd.DataFrame(compare_rows).to_csv(out_dir / "epoch_ccf_vs_abs_delta.csv", index=False)
+            n_disc = sum(1 for r in compare_rows if r["epoch_ccf_abs_rel_discordant"])
+            meta_discord = {"n_abs_rel_pairs": len(compare_rows), "n_discordant": n_disc}
+        else:
+            meta_discord = {"n_abs_rel_pairs": 0, "n_discordant": 0}
     else:
         # Zero-anchor relative-only product (11c wire)
         fill_result = combine_relative_and_absolute(dv, sig, abs_rv, abs_sig)
@@ -445,6 +468,8 @@ def run_matrix(
         "diag_abs_max_kms": float(max(diag_abs)) if diag_abs else None,
         "diag_abs_median_kms": float(np.median(diag_abs)) if diag_abs else None,
         "n_abs_delta_comparisons": len(compare_rows),
+        "n_abs_rel_discordant": int(meta_discord["n_discordant"]),
+        "discord_n_sigma": float(discord_n_sigma),
         "abs_delta_residual_rms_kms": (
             float(np.sqrt(np.mean(np.square([r["residual_kms"] for r in compare_rows]))))
             if compare_rows
@@ -455,7 +480,10 @@ def run_matrix(
         "max_grid_points": max_grid_points,
         "rv_search_half_width_kms": rv_search_half_width_kms,
         "sigma_ij_scale": float(max(1.0, float(sigma_ij_scale))),
-        "note": "Not default adopted RV; relative/fill product only (step 11).",
+        "note": (
+            "Cascade may adopt epoch_ccf_abs_fill after strong_lines when abs-anchored; "
+            "always flag abs vs relative ΔRV discord (systematics test)."
+        ),
     }
     meta_path = out_dir / "epoch_ccf_meta.json"
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
@@ -511,14 +539,15 @@ def attach_epoch_ccf_fill_columns(
     fill_row: pd.Series | None,
 ) -> pd.DataFrame:
     """
-    Return a copy of ``diagnostics`` with opt-in epoch-CCF product columns.
+    Return a copy of ``diagnostics`` with epoch-CCF product columns.
 
     Columns added (NaN when ``fill_row`` is None or value missing):
     ``epoch_ccf_rel``, ``epoch_ccf_abs_fill``, ``epoch_ccf_sigma_kms``,
     ``epoch_ccf_n_abs_anchors``, ``epoch_ccf_relative_only``.
 
-    These are **not** adopted-RV inputs. Use only for salvage / fusion
-    experiments (step 11d).
+    Abs-anchored ``epoch_ccf_abs_fill`` method rows (via
+    :func:`epoch_ccf_product_method_rows`) feed the adopt cascade after
+    ``strong_lines``. Relative-only fills are not adopted.
     """
     out = diagnostics.copy()
     rel = float("nan")
@@ -552,11 +581,13 @@ def attach_epoch_ccf_fill_columns(
 
 def epoch_ccf_product_method_rows(fill_row: pd.Series) -> list[dict]:
     """
-    Build optional diagnostics-style method rows for epoch-CCF products.
+    Build diagnostics-style method rows for epoch-CCF products.
 
     Methods ``epoch_ccf_rel`` and ``epoch_ccf_abs_fill`` use ``chunk_key=all``.
-    They are **excluded** from :func:`darkhunter_rv.method_evaluation.recommend_adopted_rv`
-    and fusion v2 until a later explicit policy switch.
+    ``epoch_ccf_abs_fill`` is consumed by
+    :func:`darkhunter_rv.method_evaluation.recommend_adopted_rv` as the tier
+    after ``strong_lines`` when abs-anchored. ``epoch_ccf_rel`` is recorded for
+    diagnostics only (not in the adopt cascade).
 
     Parameters
     ----------
@@ -616,8 +647,9 @@ def enrich_diagnostics_with_epoch_ccf_fill(
 
     When matrix artifacts exist, matches ``Gaia_DR3_<id>_epoch_<N>_diagnostics.csv``
     to fill rows by epoch index. Writes enriched files under ``out_dir`` (same
-    basenames). Does **not** overwrite inputs and does **not** change default
-    adopted RV.
+    basenames). Does **not** overwrite inputs unless ``out_dir`` equals the
+    source directory. Abs-anchored fill method rows enable cascade adoption
+    after ``strong_lines`` on the next pipeline / overlap pass.
 
     Parameters
     ----------
@@ -703,11 +735,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Multiply off-diagonal sigma_ij (short-pair inflation; default 1)",
     )
     p.add_argument(
+        "--discord-n-sigma",
+        type=float,
+        default=3.0,
+        help="Flag abs vs relative ΔRV when |residual| > N * σ_combined (default 3)",
+    )
+    p.add_argument(
         "--enrich-diagnostics-glob",
         default=None,
         help=(
-            "Opt-in: glob of *_diagnostics.csv to copy with epoch_ccf_rel / "
-            "epoch_ccf_abs_fill columns (and optional method rows). Requires fill CSV."
+            "Glob of *_diagnostics.csv to copy with epoch_ccf_rel / "
+            "epoch_ccf_abs_fill columns (and method rows for cascade). Requires fill CSV."
         ),
     )
     p.add_argument(
@@ -741,6 +779,7 @@ def main(argv: list[str] | None = None) -> int:
         max_grid_points=max_grid,
         abs_method=str(args.abs_method),
         sigma_ij_scale=float(args.sigma_ij_scale),
+        discord_n_sigma=float(args.discord_n_sigma),
     )
     enrich_paths: list[str] = []
     if args.enrich_diagnostics_glob:

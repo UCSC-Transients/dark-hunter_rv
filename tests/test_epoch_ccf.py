@@ -6,6 +6,7 @@ import pytest
 
 from darkhunter_rv import config
 from darkhunter_rv.epoch_ccf import (
+    abs_rel_delta_discordant,
     combine_relative_and_absolute,
     epoch_pair_ccf,
 )
@@ -112,3 +113,33 @@ def test_auto_correlation_near_zero():
     res = epoch_pair_ccf(wave, flux, wave, flux, rv_search_half_width_kms=100.0)
     assert abs(res.dv_kms) < 1.0
     assert res.qc.get("auto_correlation") is True
+
+
+def test_abs_rel_delta_discordant_flags_large_residual():
+    ok = abs_rel_delta_discordant(
+        1.0,
+        0.9,
+        err_ccf_kms=0.2,
+        err_abs_i_kms=0.1,
+        err_abs_j_kms=0.1,
+        n_sigma=3.0,
+    )
+    assert ok["discordant"] is False
+    assert abs(ok["residual_kms"] - 0.1) < 1e-9
+
+    bad = abs_rel_delta_discordant(
+        10.0,
+        0.0,
+        err_ccf_kms=0.5,
+        err_abs_i_kms=0.5,
+        err_abs_j_kms=0.5,
+        n_sigma=3.0,
+    )
+    assert bad["discordant"] is True
+    assert bad["n_sigma_residual"] > 3.0
+
+
+def test_abs_rel_delta_discordant_no_sigma_not_flagged():
+    out = abs_rel_delta_discordant(5.0, 0.0, n_sigma=3.0)
+    assert out["discordant"] is False
+    assert out["residual_kms"] == pytest.approx(5.0)
