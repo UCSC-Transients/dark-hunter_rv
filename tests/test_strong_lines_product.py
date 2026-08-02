@@ -134,7 +134,7 @@ def test_combine_separates_quality_from_snr():
             {"line": "CaI6122", "rv_kms": 10.0, "snr": 5.0, "included": True},
         ],
         offsets={},
-        qualities={"CaI4227": 0.118, "CaI6122": 1.0},
+        qualities={"CaI4227": 0.178, "CaI6122": 1.0},
     )
     assert out_q["rv_kms"] > 8.0
     # Same Q: higher S/N wins
@@ -158,30 +158,58 @@ def test_combine_skips_excluded_and_empty():
     assert out["n_lines"] == 0
 
 
+def test_combine_applies_file_qualities_as_weights():
+    """Pipeline path: file offsets+Q → w = Q × SNR² on the strong-line track."""
+    path = Path(config.REPO_ROOT) / "calibration" / "strong_line_offsets.txt"
+    offs, quals = read_strong_line_calibration(path)
+    out = combine_strong_line_rvs(
+        [
+            {"line": "CaI6122", "rv_kms": 11.274, "snr": 20.0, "included": True},
+            {"line": "Hbeta", "rv_kms": 10.525, "snr": 20.0, "included": True},
+        ],
+        offs,
+        qualities=quals,
+    )
+    assert abs(out["rv_kms"] - 10.0) < 1e-6
+    by_line = {d["line"]: d for d in out["details"]}
+    assert abs(by_line["CaI6122"]["quality"] - 1.0) < 1e-9
+    assert abs(by_line["Hbeta"]["quality"] - 0.322) < 1e-9
+    assert by_line["CaI6122"]["weight"] > by_line["Hbeta"]["weight"]
+
+
 def test_read_strong_line_calibration_quality():
     path = Path(config.REPO_ROOT) / "calibration" / "strong_line_offsets.txt"
     offs, quals = read_strong_line_calibration(path)
-    assert offs["Hbeta"] == 0.494
-    assert quals["CaI6122"] == 1.0
+    assert abs(offs["Hbeta"] - 0.525) < 1e-9
+    assert abs(offs["CaI6122"] - 1.274) < 1e-9
+    assert abs(quals["CaI6122"] - 1.0) < 1e-9
+    assert abs(quals["CaI6162"] - 0.895) < 1e-9
+    assert abs(quals["MgIb2"] - 0.612) < 1e-9
+    assert abs(quals["MgIb3"] - 0.546) < 1e-9
+    assert abs(quals["Hbeta"] - 0.322) < 1e-9
+    assert abs(quals["CaI4227"] - 0.178) < 1e-9
     assert quals["CaI4227"] < quals["MgIb2"] < quals["CaI6122"]
 
 
 def test_campaign_qualities_match_debiased_mad_estimator():
+    """File Q matches estimator on inclusion-gated rows (near-line flux S/N)."""
     csv_path = (
         Path(config.REPO_ROOT)
         / "validation_output"
         / "strong_line_candidate_sweep"
-        / "per_line_fits.csv"
+        / "per_line_with_snr_near_line.csv"
     )
     if not csv_path.is_file():
         import pytest
 
-        pytest.skip("candidate sweep CSV not present")
+        pytest.skip("inclusion-enriched candidate CSV not present")
     per = pd.read_csv(csv_path)
     keep = ["Hbeta", "MgIb2", "MgIb3", "CaI6122", "CaI6162", "CaI4227"]
     rows = []
     for _, r in per.iterrows():
-        if r.line not in keep or not bool(r.detected) or not bool(r.mask_valid):
+        if r.line not in keep:
+            continue
+        if not bool(r.detected) or not bool(r.mask_valid) or not bool(r.included):
             continue
         rows.append(
             {"line": str(r.line), "rv_kms": float(r.rv_kms), "mask_rv_kms": float(r.mask_rv_kms)}

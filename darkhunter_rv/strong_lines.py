@@ -305,6 +305,8 @@ def read_strong_line_calibration(path: Path | None) -> tuple[dict[str, float], d
         s = raw.strip()
         if not s or s.startswith("#"):
             continue
+        if "#" in s:
+            s = s.split("#", 1)[0].strip()
         parts = s.split()
         if len(parts) < 2:
             continue
