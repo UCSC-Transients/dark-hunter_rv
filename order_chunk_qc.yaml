@@ -23,3 +23,14 @@ instruments:
     min_ccf_peak: 0.02
     min_ccf_peak_snr: 2.75
     max_fft_ccf_flat_rss_ratio: 0.88
+# Trust-weighted IVW stack (step 02b). Default off — enable to scale 1/σ² by residual /
+# telluric / CCF-quality factors. Columns always written to diagnostics when stack runs.
+trust_weights:
+  enabled: false
+  residual_scale_kms: 5.0
+  residual_power: 2.0
+  telluric_soft_max: 0.10
+  telluric_hard_max: 0.30
+  ccf_snr_ref: 8.0
+  max_ccf_asymmetry: 0.55
+  min_trust: 0.05

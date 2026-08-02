@@ -81,12 +81,14 @@ bash scripts/rebuild_mask_bias.sh
 bash scripts/refit_all_per_object_parallel.sh
 ```
 
-### 02b (`step/02b-trust-weights-stack`) — **pending** (out of scope this thin card)
+### 02b (`step/02b-trust-weights-stack`) — **implemented (opt-in)**
 
-- [ ] Implement trust weights (residual vs robust mean, telluric fraction, CCF quality) scaling IVW in `pipeline.py`
-- [ ] Add weight columns to diagnostics CSV
-- [ ] Version `order_chunk_qc.yaml` thresholds
+- [x] Implement trust weights (residual vs robust mean, telluric fraction, CCF quality) scaling IVW in `pipeline.py`
+- [x] Add weight columns to diagnostics CSV
+- [x] Version `order_chunk_qc.yaml` thresholds
 - [ ] Validate on relative gate + median σ_RV vs current IVW-only stack
+
+**Note:** Implementation ships **opt-in** (`trust_weights.enabled: false`; CLI `--trust-weights`). Campaign σ_RV / relative-gate A/B still open. Historical deferral (wait for template baseline) remains valid for *tuning*; code path ready.
 
 **Defer 02b** until template lane baseline (step 10) is captured — avoids retuning weights twice.
 
@@ -117,7 +119,7 @@ CHUNK_LAYOUT=calibration/chunk_layouts/subchunks_8.yaml bash scripts/refit_star_
 - [x] Subchunk study shows improved median σ_RV vs subchunks_4 on common cohort
 - [x] Production layout + committed Jun-16 `subchunks_8` bias verified (rebuild deferred pre-final)
 - [ ] Ziggy catalog refit — human TODO (commands above); agent must not run ziggy
-- [ ] Trust-weighted stack (02b) — future; not blocking step 10
+- [x] Trust-weighted stack (02b) — opt-in code + tests; campaign validation open; not blocking step 10
 
 ## Tests / validation
 
