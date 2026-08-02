@@ -237,16 +237,16 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [~] **P0c** Keep committed Jun-16 `bias_statistics.txt` (s8). **Fresh rebuild deferred to pre-final product.** Ziggy: alert human only (see §12.1)
 - [x] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done (`18d6cec` on `step/10c-method-offsets`)
 - [x] **P1** Absolute lanes OK for now: mask bias verified (rebuild deferred), template offsets, strong tests+Q (fresh `ivw_n=` diagnostics still optional). Epoch spike done (#94); matrix CLI = Phase 4
-- [ ] **P2** 08 lite report (in flight) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
+- [x] **P2** 08 lite done (`a6ffe75`, n_stars=4) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
 - [ ] **P3** Fusion merged; adopted plots merged
 - [ ] **P4** Step 11 v1 merged; 05a short-pair report uses matrix
 - [ ] **P5** 02b + SB2 (reuse untracked WIP) + 08-full — **do**, not defer
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human:** approve Phase 1 push/PRs — suggest **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate
-2. Launch Phase 2: LIT-08-LITE + BENCH-01 (isolated worktrees)
-3. Then FUSION-03 → PLOTS-04; EPOCH-MATRIX when ready
+1. **Human:** approve Phase 1 push/PRs — suggest **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate. Phase 2 branches (`01-cool-closeout`, `08-external-rv-crosscheck`) → Phase 2 PR when ready.
+2. Launch FUSION-03 (Phase 3) then PLOTS-04
+3. EPOCH-MATRIX + SHORTPAIR-05A after fusion scaffold / Phase 4
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -616,6 +616,7 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | STRONG-QA | hung→relaunch | — | First wt agent stalled; relaunched |
 | 2026-08-02 | STRONG-QA | **done** | `767d68b` on `step/06-post-merge-qa` | pytest 19p/1s; Q match; archived smoke lacks `ivw_n=` (code emits) |
 | 2026-08-02 | BENCH-01 | **done** (waivers) | `5c352e4` on `step/01-cool-closeout` | σ_RV north star MET; chunk-scatter/Phase A waived; #38 commented |
+| 2026-08-02 | LIT-08-LITE | **done** | `a6ffe75` on `step/08-external-rv-crosscheck` | n_stars=4; compare_literature_rvs CLI; #45 commented |
 
 ---
 
