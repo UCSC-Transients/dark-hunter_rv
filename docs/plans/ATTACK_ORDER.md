@@ -78,11 +78,11 @@ flowchart TB
 | Priority | Task | Owner style | Notes |
 |----------|------|-------------|-------|
 | 0a | ~~Wait for CI → merge [#90](https://github.com/UCSC-Transients/dark-hunter_rv/pull/90)~~ | **DONE** 2026-08-02 | Step 06 complete; #43/#91–#93 closed |
-| 0b | Land ORCHESTRATOR / ATTACK_ORDER / step 11 docs on main | docs PR | Not in #90 merge; follow-up |
-| 0c | **02a closeout:** rebuild/commit `bias_statistics.txt` for `subchunks_8`; ziggy catalog refit | shell + docs | Mask lane deploy truth; blocks honest mask baselines |
-| 0d | **10c:** `method_rv_offsets.txt` (mask as truth) + ops note | coding | Template lane “finished” for fusion input |
+| 0b | ~~Land ORCHESTRATOR / ATTACK_ORDER / step 11 docs on main~~ | **DONE** | [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) / [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) |
+| 0c | **02a closeout:** rebuild/commit `bias_statistics.txt` for `subchunks_8`; ziggy catalog refit | **DEFERRED** pre-final | Jun-16 table kept; ziggy human-gated |
+| 0d | ~~**10c:** `method_rv_offsets.txt` (mask as truth) + ops note~~ | **DONE** | On main via #95/#101 |
 
-**Subagents:** after #90 merges, run **0c** and **0d** in parallel (different files / calibration products).
+**Phases 1–5 code:** landed on `main` as `c6801f7` ([#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101)). Remaining: soft residuals + pre-final bias/ziggy.
 
 ---
 
