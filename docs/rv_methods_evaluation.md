@@ -91,4 +91,36 @@ Same tool as legacy outliers: ``python -m validation.plot_legacy_outlier_orders`
 
 ## Epoch–epoch CCF (relative / fill; not adopted)
 
-Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matrix`) and optional WLS abs fill columns `epoch_ccf_rel` / `epoch_ccf_abs_fill`. These are **not** part of the adopted-RV cascade above; fusion (step 03) may consume fills later.
+Step 11 builds a spectrum–spectrum relative matrix (`validation.epoch_ccf_matrix`) and WLS absolute fill when ≥1 abs anchor exists. Product tags:
+
+| Tag / column | Meaning |
+|--------------|---------|
+| `epoch_ccf_rel` | WLS solution `v_hat` (relative ladder; may float zeropoint if zero anchors) |
+| `epoch_ccf_abs_fill` | Same `v_hat` only when abs-anchored; else NaN |
+| `epoch_ccf_abs_fill.csv` | Per-epoch table from the matrix CLI (always written) |
+
+**Not default adopted RV.** `recommend_adopted_rv` cascade and fusion v2 (`--with-fusion`) stay mask → template → strong_lines. Epoch-CCF products must not replace that cascade without an explicit human accept of default-adopt policy.
+
+### Interaction with step 03 fusion
+
+Epoch fill is an **optional prior or post-fusion salvage**, not a cascade replacement:
+
+1. **Prior / salvage inputs (pre-fusion):** when mask/template/strong fail on a low-S/N epoch but the star has multi-epoch coverage, abs-anchored `epoch_ccf_abs_fill` can supply a finite RV for that exposure for downstream analysis. Prefer feeding fills as **extra calibrated columns** or salvage candidates — do not silently overwrite `adopted_method_v2`.
+2. **Post-fusion hole fill:** after fusion/rejection (`rv_accepted` false or no valid method), attach `epoch_ccf_abs_fill` only where anchors exist and fusion left a hole. Relative-only (`float_zeropoint`) stays QC / ΔRV, not absolute adopt.
+3. **Open policy:** whether fills run **before** fusion (salvage method inputs) or **after** (fill adopted holes only) remains an open step-11 decision. Until decided, use the opt-in enrich path below and keep fusion reports unchanged.
+
+### Opt-in diagnostics enrich
+
+When matrix artifacts exist, attach product columns (and optional method rows) to **copies** of diagnostics:
+
+```bash
+PYTHONPATH=. python -m validation.epoch_ccf_matrix \
+  --gaia-id <id> \
+  --data-root /Users/rfoley/darkhunter/rvs/data \
+  --abs-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' \
+  --out-dir validation_output/epoch_ccf/<id> \
+  --enrich-diagnostics-glob 'output/Gaia_DR3_<id>_epoch_*_diagnostics.csv' \
+  --enrich-out-dir validation_output/epoch_ccf/<id>/enriched_diagnostics
+```
+
+`--enrich-no-method-rows` attaches columns only. Method rows `epoch_ccf_rel` / `epoch_ccf_abs_fill` (`chunk_key=all`) are ignored by the v1/v2 adopters today; they exist for salvage experiments and overlap/fusion prototyping.
