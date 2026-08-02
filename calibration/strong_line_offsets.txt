@@ -1,0 +1,25 @@
+# Per-line strong-lines calibration (#93).
+#
+# Procedure (recomputed with local flux/eflux S/N near each line + inclusion):
+#   1. offset = median(RV_line − mask) on included detections
+#   2. debiased residual = (RV_line − offset) − mask
+#   3. quality = mad_ref / MAD(|debiased residual|)  (best keep-line = 1)
+#
+# Inclusion: depth, err, telluric, and continuum median(flux/eflux) near the line
+# (STRONG_LINE_MIN_SNR). Width gate relaxed in this recalibration (CSV lacked σ).
+#
+# Exposure weight: w = quality × (S/N_near_line)²
+#
+# Source: validation_output/strong_line_candidate_sweep/per_line_fits.csv
+#         + local_snr_near_line on native order flux/eflux
+#
+# line_name  offset_kms  quality
+Hbeta       0.525  0.322  # n_included=107
+MgIb2       1.553  0.612  # n_included=101
+CaI6122     1.274  1.000  # n_included=114
+CaI6162     1.687  0.895  # n_included=113
+MgIb3       2.658  0.546  # n_included=113
+CaI4227     2.696  0.178  # n_included=65
+Hgamma      0.000  0.200  # n_included=0
+Hdelta      0.000  0.200  # n_included=0
+Halpha      0.000  0.150  # n_included=0

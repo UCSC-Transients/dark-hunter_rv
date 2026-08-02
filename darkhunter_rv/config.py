@@ -141,8 +141,22 @@ COMPARISON_REPORT_TEFF_BIN_HI_K = 9000.0
 METHOD_REGION_MASK_COOL_TEFF_K = 5200.0
 METHOD_REGION_MASK_WARM_TEFF_K = 7000.0
 METHOD_REGION_LOG10_SNR_MIN = 0.65
-# Strong lines (Hβ): Teff > STRONG_LINES_MIN_TEFF_K AND log10(S/N) > same threshold.
+# Strong lines region: Teff > STRONG_LINES_MIN_TEFF_K AND log10(S/N) > same threshold.
 METHOD_REGION_STRONG_LINES_MIN_TEFF_K = 5500.0
+# Strong-line inclusion gates (#92) and per-line offsets (#93).
+STRONG_LINE_MIN_DEPTH = 0.05
+STRONG_LINE_MAX_ERR_KMS = 40.0
+STRONG_LINE_MIN_SNR = 8.0  # continuum flux/eflux median near the line
+STRONG_LINE_MIN_WIDTH_KMS = 3.0
+STRONG_LINE_MAX_WIDTH_KMS = 250.0
+STRONG_LINE_MAX_TELLURIC_FRAC = 0.08
+_STRONG_LINE_OFFSETS_ENV = os.environ.get("DARKHUNTER_STRONG_LINE_OFFSETS_FILE", "").strip()
+STRONG_LINE_OFFSETS_FILE: Path | None
+if _STRONG_LINE_OFFSETS_ENV:
+    STRONG_LINE_OFFSETS_FILE = Path(_STRONG_LINE_OFFSETS_ENV)
+else:
+    _slo = REPO_ROOT / "calibration" / "strong_line_offsets.txt"
+    STRONG_LINE_OFFSETS_FILE = _slo if _slo.is_file() else None
 
 # Adopted exposure RV cascade (mask → template → strong): prefer first method that is
 # region-applicable, valid, and has σ ≤ this (km/s). If none meet σ, use first applicable valid

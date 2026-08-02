@@ -16,6 +16,14 @@ import numpy as np
 import pandas as pd
 from . import config, instruments, io_utils, continuum, rv_core, templates, chunking, plotting, qc
 from .gaia_utils import parse_gaia_id_from_path
+from .strong_lines import (
+    StrongLineInclusionConfig,
+    combine_strong_line_rvs,
+    line_uses_broad_profile,
+    read_strong_line_calibration,
+    strong_line_fit_metrics,
+    strong_line_passes_inclusion,
+)
 from darkhunter_rv.summary_paths import is_primary_epoch_spectrum_name
 
 logger = logging.getLogger(__name__)
@@ -1316,14 +1324,27 @@ def process_spectrum(
     nf_hb: np.ndarray | None = None
     hb_rest = float(rv_core.HB_REST_A)
     hb_line_name = "Hbeta"
+    strong_line_measurements: list[dict] = []
     if use_fft_primary or run_multi or args.hb_rv_fallback:
         tw_hb, tf_hb = (None, None)
         if bank:
             tw_hb, tf_hb = next(iter(bank.values()))
         R_inst = float(getattr(instrument, "resolving_power", 60_000.0))
         line_candidates = rv_core.strong_line_rests_for_teff(teff)
-        best_score = float("inf")
+        inclusion_cfg = StrongLineInclusionConfig(
+            min_depth=float(config.STRONG_LINE_MIN_DEPTH),
+            max_err_kms=float(config.STRONG_LINE_MAX_ERR_KMS),
+            min_snr=float(config.STRONG_LINE_MIN_SNR),
+            min_width_kms=float(config.STRONG_LINE_MIN_WIDTH_KMS),
+            max_width_kms=float(config.STRONG_LINE_MAX_WIDTH_KMS),
+            max_telluric_frac=float(config.STRONG_LINE_MAX_TELLURIC_FRAC),
+        )
         for cand_i, (line_name, rest_a) in enumerate(line_candidates):
+            best_for_line: dict | None = None
+            best_line_score = float("inf")
+            best_nw = best_nf = None
+            best_order = None
+            use_broad = line_uses_broad_profile(line_name, hot_spectrum=bool(use_fft_primary))
             for o in valid_orders:
                 w_raw = np.array(spec_data[o]["wavelength"], float)
                 lo, hi = float(min(w_raw[0], w_raw[-1])), float(max(w_raw[0], w_raw[-1]))
@@ -1347,7 +1368,7 @@ def process_spectrum(
                     nw_h,
                     nf_h,
                     rest=float(rest_a),
-                    broad_lines=bool(use_fft_primary),
+                    broad_lines=bool(use_broad),
                     tpl_wave=tw_hb,
                     tpl_flux_norm=tf_hb,
                     resolving_power=R_inst,
@@ -1358,62 +1379,124 @@ def process_spectrum(
                 err_try = float(hb_try.get("err_voigt_kms", np.nan))
                 if not np.isfinite(rv_try):
                     continue
-                # Prefer finite formal error; otherwise large penalty. Earlier Teff-band candidates win ties.
+                metrics = strong_line_fit_metrics(
+                    wave=nw_h,
+                    flux_norm=nf_h,
+                    rest=float(rest_a),
+                    rv_kms=float(rv_try),
+                    err_kms=float(err_try),
+                    bundle=hb_try,
+                    flux=f_raw,
+                    eflux=e_raw,
+                    wave_native=w_raw,
+                )
+                ok_inc, reason_inc = strong_line_passes_inclusion(metrics, inclusion_cfg)
                 score = float(err_try) if np.isfinite(err_try) and err_try > 0 else 50.0
                 score += 0.5 * float(cand_i)
-                if score < best_score:
-                    best_score = score
-                    hb_bundle = hb_try
-                    hb_order = int(o)
-                    nw_hb, nf_hb = nw_h, nf_h
-                    hb_rest = float(rest_a)
-                    hb_line_name = str(line_name)
-            if hb_bundle is not None and line_name == "Hbeta" and best_score < 20.0:
-                # Good Hβ fit: stop (keep Hβ as primary when it works).
-                break
+                if score < best_line_score:
+                    best_line_score = score
+                    best_for_line = {
+                        "line": str(line_name),
+                        "rest_a": float(rest_a),
+                        "rv_kms": float(rv_try),
+                        "err_kms": float(err_try),
+                        "depth": float(metrics["depth"]),
+                        "snr": float(metrics["snr"]),
+                        "width_kms": float(metrics["width_kms"]),
+                        "telluric_frac": float(metrics["telluric_frac"]),
+                        "included": bool(ok_inc),
+                        "include_reason": "" if ok_inc else str(reason_inc),
+                        "bundle": hb_try,
+                        "order": int(o),
+                        "cand_index": int(cand_i),
+                        "score": float(score),
+                    }
+                    best_nw, best_nf = nw_h, nf_h
+                    best_order = int(o)
+            if best_for_line is not None:
+                strong_line_measurements.append(best_for_line)
+                # Representative bundle for Hβ-style diagnostic plots (prefer included Hβ).
+                if best_for_line["included"]:
+                    if hb_bundle is None or str(best_for_line["line"]) == "Hbeta":
+                        hb_bundle = best_for_line["bundle"]
+                        hb_order = best_order
+                        nw_hb, nf_hb = best_nw, best_nf
+                        hb_rest = float(best_for_line["rest_a"])
+                        hb_line_name = str(best_for_line["line"])
 
-    if hb_bundle is not None and (run_multi or use_fft_primary or args.hb_rv_fallback):
-        _hbp_json = _hb_joint_fit_params_json(hb_bundle)
-        _rv_v_line = _rv_kms_from_hb_joint_line_center(hb_bundle)
-        # Single third method: Voigt+Lorentz on best strong line for this Teff.
-        diagnostics_rows.append(
-            {
-                "file": spectrum_file,
-                "chunk_key": "all",
-                "mjd": mjd,
-                "teff": teff_diag,
-                "continuum_mode": _resolve_continuum_mode(args, "strong"),
-                "method": "strong_lines",
-                "mask_name": "",
-                "rv_kms": float(_rv_v_line),
-                "rv_err_kms": float(hb_bundle["err_voigt_kms"]),
-                "ccf_peak": float(hb_bundle["template_ccf_peak"])
-                if hb_bundle.get("template_ccf_peak") is not None
-                else np.nan,
-                "gauss_ok": np.isfinite(_rv_v_line),
-                "template_key": "",
-                "telluric_fraction": np.nan,
-                "mask_line_count": np.nan,
-                "ccf_width": np.nan,
-                "ccf_asymmetry": np.nan,
-                "qc_pass": True,
-                "qc_reason": f"pending:{hb_line_name}",
-                "chunk_scatter_kms": np.nan,
-                "residual_to_exposure_kms": np.nan,
-                "hb_joint_fit_params_json": _hbp_json,
-                "strong_line_rest_angstrom": float(hb_rest),
-            }
-        )
-        if (
-            plot_detail
-            and run_multi
-            and plots_strong_line_panels
-            and plot_root is not None
-            and np.isfinite(float(_rv_v_line))
-        ):
-            plotting.plot_balmer_panels(
-                spec_data, mjd, float(_rv_v_line), plot_root / f"{stem}_balmer.png"
+        included = [m for m in strong_line_measurements if m.get("included")]
+        offsets, qualities = read_strong_line_calibration(config.STRONG_LINE_OFFSETS_FILE)
+        combined = combine_strong_line_rvs(included, offsets, qualities=qualities)
+        _rv_v_line = float("nan")
+        if combined["n_lines"] >= 1 and np.isfinite(combined["rv_kms"]):
+            if hb_bundle is None and included:
+                top = included[0]
+                hb_bundle = top.get("bundle")
+                hb_order = int(top.get("order", -1)) if top.get("order") is not None else None
+                hb_rest = float(top["rest_a"])
+                hb_line_name = str(top["line"])
+                # Recover continuum for plots when Hβ was not included.
+                if (nw_hb is None or nf_hb is None) and top.get("order") is not None:
+                    try:
+                        o_pl = int(top["order"])
+                        w_raw = np.array(spec_data[o_pl]["wavelength"], float)
+                        f_raw = np.array(spec_data[o_pl]["flux"], float)
+                        e_raw = np.array(spec_data[o_pl]["eflux"], float)
+                        nw_hb, nf_hb, _ = continuum.fit_continuum(
+                            w_raw,
+                            f_raw,
+                            e_raw,
+                            **_continuum_fit_kw(
+                                args, use_fft_primary, echelle_order=o_pl, lane="strong"
+                            ),
+                        )
+                    except Exception:
+                        nw_hb, nf_hb = None, None
+            _hbp_json = _hb_joint_fit_params_json(hb_bundle) if hb_bundle else ""
+            lines_used = ",".join(combined["lines_used"])
+            _rv_v_line = float(combined["rv_kms"])
+            diagnostics_rows.append(
+                {
+                    "file": spectrum_file,
+                    "chunk_key": "all",
+                    "mjd": mjd,
+                    "teff": teff_diag,
+                    "continuum_mode": _resolve_continuum_mode(args, "strong"),
+                    "method": "strong_lines",
+                    "mask_name": "",
+                    "rv_kms": float(combined["rv_kms"]),
+                    "rv_err_kms": float(combined["err_kms"]),
+                    "ccf_peak": float(hb_bundle["template_ccf_peak"])
+                    if hb_bundle is not None and hb_bundle.get("template_ccf_peak") is not None
+                    else np.nan,
+                    "gauss_ok": True,
+                    "template_key": "",
+                    "telluric_fraction": np.nan,
+                    "mask_line_count": float(combined["n_lines"]),
+                    "ccf_width": np.nan,
+                    "ccf_asymmetry": np.nan,
+                    "qc_pass": True,
+                    "qc_reason": f"ivw_n={combined['n_lines']}:{lines_used}",
+                    "chunk_scatter_kms": np.nan,
+                    "residual_to_exposure_kms": np.nan,
+                    "hb_joint_fit_params_json": _hbp_json,
+                    "strong_line_rest_angstrom": float(hb_rest),
+                    "strong_lines_used": lines_used,
+                }
             )
+            if (
+                plot_detail
+                and run_multi
+                and plots_strong_line_panels
+                and plot_root is not None
+                and np.isfinite(float(_rv_v_line))
+            ):
+                plotting.plot_balmer_panels(
+                    spec_data, mjd, float(_rv_v_line), plot_root / f"{stem}_balmer.png"
+                )
+        elif strong_line_measurements:
+            logger.info("strong_lines: no lines passed inclusion for %s", stem)
+
     if not run_multi:
         if (
             args.hb_rv_fallback
@@ -1430,19 +1513,37 @@ def process_spectrum(
                 stack_pairs = set()
                 logger.warning("Hβ-only fallback RV=%.3f+/-%.3f", mean_rv, mean_err)
 
-        if use_fft_primary and hb_bundle is not None:
-            _hb_line_rv_adopt = _rv_kms_from_hb_joint_line_center(hb_bundle)
-            if np.isfinite(float(_hb_line_rv_adopt)):
-                mean_rv = float(_hb_line_rv_adopt)
-                mean_err = float(hb_bundle["err_voigt_kms"])
+        if use_fft_primary:
+            sl_rows = [
+                r
+                for r in diagnostics_rows
+                if str(r.get("method")) == "strong_lines" and bool(r.get("qc_pass", False))
+            ]
+            if sl_rows and np.isfinite(float(sl_rows[0].get("rv_kms", np.nan))):
+                mean_rv = float(sl_rows[0]["rv_kms"])
+                mean_err = float(sl_rows[0].get("rv_err_kms", np.nan))
                 if not np.isfinite(mean_err) or mean_err <= 0:
                     mean_err = 5.0
                 rms = 0.0
                 logger.info(
-                    "Hot star: adopted exposure RV = strong_lines (Hβ Voigt+Lorentz) %.3f +/- %.3f km/s",
+                    "Hot star: adopted exposure RV = strong_lines IVW %.3f +/- %.3f km/s (%s)",
                     mean_rv,
                     mean_err,
+                    sl_rows[0].get("qc_reason", ""),
                 )
+            elif hb_bundle is not None:
+                _hb_line_rv_adopt = _rv_kms_from_hb_joint_line_center(hb_bundle)
+                if np.isfinite(float(_hb_line_rv_adopt)):
+                    mean_rv = float(_hb_line_rv_adopt)
+                    mean_err = float(hb_bundle["err_voigt_kms"])
+                    if not np.isfinite(mean_err) or mean_err <= 0:
+                        mean_err = 5.0
+                    rms = 0.0
+                    logger.info(
+                        "Hot star: adopted exposure RV = strong_lines (single line) %.3f +/- %.3f km/s",
+                        mean_rv,
+                        mean_err,
+                    )
 
     hb_fit_balmer = None
     if nw_hb is not None and nf_hb is not None:

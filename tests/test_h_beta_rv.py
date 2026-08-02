@@ -50,7 +50,9 @@ def test_strong_line_rests_for_teff_orders():
     hot = rv_core.strong_line_rests_for_teff(6500.0)
     cool = rv_core.strong_line_rests_for_teff(4500.0)
     assert hot[0][0] == "Hbeta"
-    assert cool[0][0] == "Halpha"
+    assert cool[0][0] == "Hbeta"
+    assert "MgIb2" in {n for n, _ in hot}
+    assert cool[-1][0] == "Halpha"
     assert {r for _, r in hot} >= {rv_core.HB_REST_A, rv_core.HA_REST_A}
 
 
