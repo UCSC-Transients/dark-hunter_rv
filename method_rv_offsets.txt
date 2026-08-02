@@ -1,0 +1,21 @@
+# method_rv_offsets format_version=1
+# Stellar mask RV = truth. Apply:
+#   rv_template_corrected  = rv_template  + offset_template_fft_kms
+#   rv_strong_lines_corrected = rv_strong_lines + offset_strong_lines_kms
+#
+# joint_set: all three methods finite, σ<=2.5 km/s each + METHOD_REGION_* intersection
+# joint_n=40 estimator=median
+#
+# Pairwise median deltas (subset sizes may differ — not a closed triangle):
+#   median(mask-template) n=109 km/s=-1.2664
+#   median(mask-strong)  n=98 km/s=-2.7783
+#   median(template-strong) n=101 km/s=-1.8649
+#   (mask-strong)-(template-strong) vs median(mask-template): -0.9134 vs -1.2664 (diff 0.3529)
+#
+# After applying median joint offsets on joint set — median residuals (should ~0 for mask):
+#   median(mask - corrected_template) = -0.0000
+#   median(mask - corrected_strong)   = 0.0000
+#   median(corrected_template - corrected_strong) = -0.2509
+#
+# Columns: instrument offset_template_fft_kms offset_strong_lines_kms n_exposures_joint estimator
+APF -1.04836905 -2.80269523 40 median

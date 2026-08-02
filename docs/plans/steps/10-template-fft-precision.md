@@ -83,9 +83,10 @@ Improve **template_fft** per-epoch RV accuracy and precision on the same footing
 
 ### 10c — Template debias and deploy
 
-- [ ] Template-specific `bias_statistics` or method-offset table (mask remains truth reference unless fusion says otherwise).
-- [ ] Rebuild bias on `calibration/bias_train.txt` with frozen layout + template path.
-- [ ] Record production defaults in `docs/operations.md`; refit catalog on ziggy.
+- [x] Template-specific `bias_statistics` or method-offset table (mask remains truth reference unless fusion says otherwise).
+  - Installed `method_rv_offsets.txt` (APF): template **−1.048** km/s, strong **−2.803** km/s; joint_n=40 median on `pipeline_cool_vsini12_mhfix` (114 diagnostics). Pairwise median(mask−template)=**−1.266** km/s (n=109). Post-offset joint residuals ~0 for mask−template / mask−strong; template−strong residual **−0.251** km/s.
+- [x] Rebuild bias on `calibration/bias_train.txt` with frozen layout + template path — **skipped** (card + locked decision: no template `bias_statistics` / no rebuild this pass; mask bias unchanged).
+- [x] Record production defaults in `docs/operations.md`; refit catalog on ziggy — **ops defaults recorded**; ziggy catalog refit remains post-merge handoff.
 
 ## Key files
 
