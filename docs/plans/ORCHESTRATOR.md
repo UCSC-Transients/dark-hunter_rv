@@ -242,14 +242,14 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 - [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
 - [x] **P5** Trust / SB2 / 08-full on main (#99 → #101) — residuals remain (below)
 
-### NEXT (orchestrator — 2026-08-02 post-#101)
+### NEXT (orchestrator — 2026-08-02 post-#103)
 
-1. **PR [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)** `phase/soft-residuals`: post-#101 docs + 11d enrich + SB2 pipeline fuse + NSS cohort CLI.
-2. Soft residuals still open after that PR:
+1. ~~PR #103 soft-residuals~~ **MERGED** `a174732` (docs + 11d + SB2 fuse + NSS CLI).
+2. Soft residuals progress / remaining:
    - **11d** default adopt = human gate only
-   - **SB2** real NSS ID dump (CLI+stub landed; science fractions need catalog)
-   - **Trust 02b** campaign σ_RV / relative-gate A/B vs IVW-only
-   - **08** expand lit overlap to ≥10 stars when more APF diagnostics exist
+   - **SB2** real NSS ID dump (CLI+stub on main; science fractions need catalog)
+   - **Trust 02b** offline A/B done (`validation/trust_weight_ab_report.py` → `validation_output/trust_ab_post103/`): cool Teff<5000 median σ 0.022→0.035 km/s (×1.59); n=200 median σ ×~2.2 + relative gate 9.67→7.52 km/s. **Keep opt-in / default off.**
+   - **08** lit: `template_fft_baseline` n=4; richest `output/` **n_stars=8** (PARTIAL; spectra∩master=8/23). n≥10 needs ≥2 more master-ID spectra + reduce, or expand master.
 3. Pre-final: bias rebuild + ziggy (§12.1) when human says go
 4. Close/comment issues #38–#45 / #94 as appropriate when residuals land
 
@@ -643,6 +643,9 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-03 | PR wave | opened stacked | #95–#99 | Merge Phase 1→5 in order; bases are prior phase branches |
 | 2026-08-02 | (post-#101) | stack on main | `c6801f7` / [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | soft residuals remain |
 | 2026-08-02 | soft-residuals | **PR** | `phase/soft-residuals` | docs post-#101 + 11d enrich + SB2 pipeline fuse; supersedes #102 |
+| 2026-08-02 | #103 merged | **done** | main `a174732` | continue soft residuals-2 |
+| 2026-08-02 | TRUST-AB offline | **done** | `phase/soft-residuals-2` | median σ↑~2.4×; keep opt-in |
+| 2026-08-02 | LIT n=8 | **PARTIAL** | same branch | max spectra∩master; teff empty-row fix |
 | 2026-08-02 | #95–#99 → #101 | **merged to main** | `c6801f7` | Full stack on `main` |
 | 2026-08-02 | docs status | in flight | `docs/post-101-status` | INDEX/ORCHESTRATOR/ATTACK_ORDER post-merge |
 | 2026-08-02 | 11d wiring | **done** (local) | `f14f0a5` on `step/11d-product-wiring` | enrich hook + fusion docs; default-adopt still human |
