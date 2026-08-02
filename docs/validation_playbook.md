@@ -96,11 +96,28 @@
 
 ## SB2 search (step 07)
 
-Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit. **Not** fused into pipeline `*_diagnostics.csv` yet.
+Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template separation and orbit fit.
 
-- Per-star search: `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
+- **Pipeline fuse (default when mask CCF runs):** `process_spectrum` median-stacks already-computed `order_mask_ccf` and writes exposure-level `sb2_candidate`, `sb2_rv1_kms`, `sb2_rv2_kms`, `sb2_delta_chi2`, … on every `*_diagnostics.csv` row. Opt out: `--no-sb2-score`.
+- Per-star search (full report / template fit): `python -m validation.sb2_search --gaia-id <id> --spec-root /Users/rfoley/darkhunter/rvs/data --out-dir validation_output/sb2_<id>`
   - Outputs: `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, …), `sb2_orders.csv`, `sb2_report.json`; on detect/`--force-fit`: `sb2_fit.json` + separated spectra.
 - Fit diagnostics: `python -m validation.sb2_fit_diagnostics_report --sb2-dir validation_output/sb2_<id>`
 - Optional SB2 orbit (07c): `python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_<id>` (uses `darkhunter_rv.sb2_rv_fit`; single-lined Keplerian fitter unchanged).
 - Unit tests: `python -m pytest tests/test_sb2.py tests/test_sb2_rv_fit.py tests/test_plot_sb2_decomposition_orders.py -m "not slow"`
-- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag. Cohort fraction vs Gaia NSS SB2 still open.
+- Limits: expect false positives on noisy/asymmetric single-lined CCFs; cool high-S/N calib stars should rarely flag.
+
+### Gaia NSS cohort fraction table
+
+```bash
+cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
+PYTHONPATH=. python -m validation.sb2_nss_cohort_report \
+  --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' \
+  --nss-ids-csv calibration/nss_sb2_source_ids_stub.csv \
+  --out-dir validation_output/sb2_nss_cohort
+```
+
+Replace the stub CSV with a dump of NSS two-body / SB2 ``source_id`` values for real
+``frac_flagged_among_nss`` / ``frac_flagged_among_non_nss``. Outputs:
+``exposure_sb2_flags.csv``, ``per_star.csv``, ``fraction_table.csv``.
+
+Requires pipeline fuse so diagnostics carry ``sb2_candidate``.

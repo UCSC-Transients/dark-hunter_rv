@@ -40,14 +40,17 @@ Detect and report double-lined systems where appropriate; optional two-lined orb
 - [x] Prototype dual-Gaussian CCF fit or bisector metric in `rv_core.py`
   - Implemented as `BiGaussCcfResult` / `estimate_ccf_bi_gauss_from_arrays` / `estimate_ccf_secondary_seeded` in `ccf_rv_estimators.py`; scored via `darkhunter_rv.sb2` (median-CCF gate). Not inlined into `rv_core.py`.
 - [x] Per-chunk SB2 scores in diagnostics
-  - Per-order CCF rows in `sb2_orders.csv`; exposure-level bi-Gauss score + `sb2_candidate` in `sb2_epochs.csv` / `sb2_report.json` (validation path, not pipeline `*_diagnostics.csv` yet).
+  - Per-order CCF rows in `sb2_orders.csv`; exposure-level bi-Gauss score + `sb2_candidate` in `sb2_epochs.csv` / `sb2_report.json`.
+  - **Pipeline fuse:** when mask CCF already computed, `process_spectrum` writes `sb2_candidate` + `sb2_rv1_kms` / `sb2_rv2_kms` / `sb2_delta_chi2` onto `*_diagnostics.csv` (opt-out `--no-sb2-score`).
 
 ### 07b (`step/07b-sb2-reporting`)
 
 - [x] Exposure-level `sb2_candidate` flag + columns in CSV/summary
   - `python -m validation.sb2_search` writes `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, ...) and `sb2_report.json`.
-- [ ] Validation report: fraction flagged vs Gaia NSS SB2
-  - Still open: no cohort NSS fraction table yet; per-star Gaia metadata loads disk-first in `load_star_context`.
+  - Pipeline `*_diagnostics.csv` also carries `sb2_candidate` / primary–secondary RV columns when mask CCF runs.
+- [x] Validation report: fraction flagged vs Gaia NSS SB2
+  - `python -m validation.sb2_nss_cohort_report` + stub/cached `--nss-ids-csv`; playbook recipe updated.
+  - Real NSS dump still needed for science fractions (stub IDs for CLI/tests only).
 
 ### 07c (`step/07c-sb2-orbit-optional`, defer if needed)
 
@@ -95,4 +98,5 @@ python -m validation.sb2_orbit_fit --sb2-dir validation_output/sb2_7741372749369
 
 - Spectral decomposition per epoch vs time-series only? (WIP does multi-epoch template fit + per-epoch separated spectra.)
 - 07c in scope for this step or separate future step? **Kept:** orbit modules tracked; full MCMC into `fit_apf_rv_keplerian.py` still out of scope.
-- Pipeline `*_diagnostics.csv` `sb2_candidate` column vs validation-only CSV: still open for production fuse.
+- [x] Pipeline `*_diagnostics.csv` `sb2_candidate` fuse (low-cost default from mask CCF; `--no-sb2-score` to skip).
+- [x] Gaia NSS cohort report CLI (`validation/sb2_nss_cohort_report.py`); replace stub ID list for production fractions.

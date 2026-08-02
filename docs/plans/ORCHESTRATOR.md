@@ -233,36 +233,32 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 ### Progress checklist (orchestrator maintains)
 
 - [x] **P0a** PR #90 CI green + merged; step 06 → complete; INDEX updated
-- [ ] **P0b** Plan commits held local (`docs/orchestrator-post-90`); land in **first Phase 1+ PR** (no separate Phase 0 PR)
+- [x] **P0b** Orchestrator plans on main via [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) / [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101)
 - [~] **P0c** Keep committed Jun-16 `bias_statistics.txt` (s8). **Fresh rebuild deferred to pre-final product.** Ziggy: alert human only (see §12.1)
-- [x] **P0d** `method_rv_offsets.txt` produced + wired; step 10c done (`18d6cec` on `step/10c-method-offsets`)
-- [x] **P1** Absolute lanes OK for now: mask bias verified (rebuild deferred), template offsets, strong tests+Q (fresh `ivw_n=` diagnostics still optional). Epoch spike done (#94); matrix CLI = Phase 4
-- [x] **P2** 08 lite done (`a6ffe75`, n_stars=4) + 01 cool-precision closeout **done** (`5c352e4`, waivers)
-- [x] **P3** Fusion + adopted plots **local done** (`9de6c68`, `fa0578c`); merge/PR pending human
-- [x] **P4** Matrix CLI (`be9b0a3`) + short-pair QC (`47caa15`, σ-scale≈1.28 MAD); merge/PR pending
-- [~] **P5** Local done w/ residuals: TRUST-02B `f0400f9` (opt-in); SB2 `7129124` (NSS/pipeline fuse open); 08-full `fec76dc` PARTIAL (n_lit=4)
+- [x] **P0d** `method_rv_offsets.txt` on main
+- [x] **P1** Absolute baselines on main (#95)
+- [x] **P2** 01 + 08 lite on main (#96 → #101)
+- [x] **P3** Fusion + adopted plots on main (#97 → #101)
+- [x] **P4** Matrix CLI + short-pair QC on main (#98 → #101)
+- [x] **P5** Trust / SB2 / 08-full on main (#99 → #101) — residuals remain (below)
 
-### NEXT (orchestrator — 2026-08-02)
+### NEXT (orchestrator — 2026-08-02 post-#101)
 
-1. **PR stack opened (merge in order → retarget next to `main` after each merges):**
-   - Phase 1 → `main`: [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) `phase/1-absolute-baselines`
-   - Phase 2 → phase/1: [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96) `phase/2-validation`
-   - Phase 3 → phase/2: [#97](https://github.com/UCSC-Transients/dark-hunter_rv/pull/97) `phase/3-fusion-plots`
-   - Phase 4 → phase/3: [#98](https://github.com/UCSC-Transients/dark-hunter_rv/pull/98) `phase/4-epoch-ccf`
-   - Phase 5 → phase/4: [#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) `phase/5-trust-sb2-lit`
-2. Pre-final: bias rebuild + ziggy (§12.1) when you say go.
-3. Soft residuals: 11d product tags; SB2 NSS + pipeline fuse; trust campaign A/B; lit n≥10.
+1. **PR [#103](https://github.com/UCSC-Transients/dark-hunter_rv/pull/103)** `phase/soft-residuals`: post-#101 docs + 11d enrich + SB2 pipeline fuse + NSS cohort CLI.
+2. Soft residuals still open after that PR:
+   - **11d** default adopt = human gate only
+   - **SB2** real NSS ID dump (CLI+stub landed; science fractions need catalog)
+   - **Trust 02b** campaign σ_RV / relative-gate A/B vs IVW-only
+   - **08** expand lit overlap to ≥10 stars when more APF diagnostics exist
+3. Pre-final: bias rebuild + ziggy (§12.1) when human says go
+4. Close/comment issues #38–#45 / #94 as appropriate when residuals land
 
-### Branch map for PRs (local tips)
+### Branch map (historical; stack landed)
 
-| Phase | Branches (tip) |
-|-------|----------------|
-| Docs/orch | `docs/orchestrator-post-90` |
-| 1 | `step/10c-method-offsets` (`18d6cec`), `step/02a-bias-defer-verify` (`5fd36fa`), `step/06-post-merge-qa` (`767d68b`), `step/11-epoch-ccf-matrix`/`-cli` (`dbe7e8d`→`be9b0a3`) |
-| 2 | `step/01-cool-closeout` (`5c352e4`), `step/08-external-rv-crosscheck` (`a6ffe75`) |
-| 3 | `step/03-method-fusion-coverage` (`9de6c68`), `step/04-adopted-rv-match-plots` (`fa0578c`) |
-| 4 | `step/11-epoch-ccf-matrix-cli` (`be9b0a3`), `step/05a-short-pair-calibration` (`47caa15`) |
-| 5 | `step/02b-trust-weights-stack` (`f0400f9`), `step/07-sb2-search` (`7129124`), `step/08-external-rv-full` (`fec76dc`) |
+| Phase | PRs | Landed on main |
+|-------|-----|----------------|
+| 1 | [#95](https://github.com/UCSC-Transients/dark-hunter_rv/pull/95) | 2026-08-02 |
+| 2–5 stack | [#96](https://github.com/UCSC-Transients/dark-hunter_rv/pull/96)–[#99](https://github.com/UCSC-Transients/dark-hunter_rv/pull/99) → [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | 2026-08-02 `c6801f7` |
 
 ### 0.6 Human session policy (2026-08-02)
 
@@ -270,7 +266,7 @@ Binding for this orchestrator run (resume-safe):
 
 | Topic | Decision |
 |-------|----------|
-| P0b docs | Hold push; include in first PR at/after Phase 1 |
+| P0b docs | **DONE** — on main via #95/#101 |
 | Bias rebuild | Keep current file; rebuild before final product |
 | Ziggy | Never run; chat alert + log in this file (§10 / §12.1). Pause card if ziggy output required |
 | Issue #87 | Leave closed; finish 10c; comment results; mark step 10 complete when verified |
@@ -645,6 +641,11 @@ Subagents / orchestrator: append a line when a card finishes.
 | 2026-08-02 | SB2-07 | **done** (partial) | `7129124` on `step/07-sb2-search` | WIP tracked; BiGauss APIs fixed; NSS/pipeline fuse residual |
 | 2026-08-02 | LIT-08-FULL | **done PARTIAL** | `fec76dc` on `step/08-external-rv-full` | LAMOST/RAVE+overlay; n_lit=4 blocker |
 | 2026-08-03 | PR wave | opened stacked | #95–#99 | Merge Phase 1→5 in order; bases are prior phase branches |
+| 2026-08-02 | (post-#101) | stack on main | `c6801f7` / [#101](https://github.com/UCSC-Transients/dark-hunter_rv/pull/101) | soft residuals remain |
+| 2026-08-02 | soft-residuals | **PR** | `phase/soft-residuals` | docs post-#101 + 11d enrich + SB2 pipeline fuse; supersedes #102 |
+| 2026-08-02 | #95–#99 → #101 | **merged to main** | `c6801f7` | Full stack on `main` |
+| 2026-08-02 | docs status | in flight | `docs/post-101-status` | INDEX/ORCHESTRATOR/ATTACK_ORDER post-merge |
+| 2026-08-02 | 11d wiring | **done** (local) | `f14f0a5` on `step/11d-product-wiring` | enrich hook + fusion docs; default-adopt still human |
 
 ---
 

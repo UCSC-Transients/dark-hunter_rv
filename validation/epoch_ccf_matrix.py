@@ -10,6 +10,15 @@ Example::
     --data-root /Users/rfoley/darkhunter/rvs/data \\
     --abs-diagnostics-glob '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \\
     --out-dir validation_output/epoch_ccf/468391369318487040
+
+  Opt-in enrich (does not change adopted RV)::
+
+  PYTHONPATH=. python -m validation.epoch_ccf_matrix \
+    --gaia-id 468391369318487040 \
+    --data-root /Users/rfoley/darkhunter/rvs/data \
+    --out-dir validation_output/epoch_ccf/468391369318487040 \
+    --enrich-diagnostics-glob 'output/Gaia_DR3_468391369318487040_epoch_*_diagnostics.csv' \
+    --enrich-out-dir validation_output/epoch_ccf/468391369318487040/enriched_diagnostics
 """
 from __future__ import annotations
 
@@ -461,6 +470,197 @@ def run_matrix(
     return meta
 
 
+
+def load_epoch_ccf_fill_by_epoch(fill_csv: Path) -> dict[int, pd.Series]:
+    """
+    Load ``epoch_ccf_abs_fill.csv`` keyed by integer epoch index.
+
+    Parameters
+    ----------
+    fill_csv
+        Path written by :func:`run_matrix`.
+
+    Returns
+    -------
+    dict
+        ``epoch ->`` fill row (Series). Empty if file missing or empty.
+
+    Limitations
+    -----------
+    Expects columns ``epoch``, ``epoch_ccf_rel``, ``epoch_ccf_abs_fill``;
+    ``sigma_kms`` optional. Does not alter adopted-RV cascade.
+    """
+    path = Path(fill_csv)
+    if not path.is_file():
+        return {}
+    df = pd.read_csv(path)
+    if df.empty or "epoch" not in df.columns:
+        return {}
+    out: dict[int, pd.Series] = {}
+    for _, row in df.iterrows():
+        try:
+            ep = int(row["epoch"])
+        except (TypeError, ValueError):
+            continue
+        out[ep] = row
+    return out
+
+
+def attach_epoch_ccf_fill_columns(
+    diagnostics: pd.DataFrame,
+    fill_row: pd.Series | None,
+) -> pd.DataFrame:
+    """
+    Return a copy of ``diagnostics`` with opt-in epoch-CCF product columns.
+
+    Columns added (NaN when ``fill_row`` is None or value missing):
+    ``epoch_ccf_rel``, ``epoch_ccf_abs_fill``, ``epoch_ccf_sigma_kms``,
+    ``epoch_ccf_n_abs_anchors``, ``epoch_ccf_relative_only``.
+
+    These are **not** adopted-RV inputs. Use only for salvage / fusion
+    experiments (step 11d).
+    """
+    out = diagnostics.copy()
+    rel = float("nan")
+    abs_fill = float("nan")
+    sig = float("nan")
+    n_anch = float("nan")
+    rel_only = True
+    if fill_row is not None:
+        if "epoch_ccf_rel" in fill_row.index:
+            rel = float(fill_row["epoch_ccf_rel"])
+        elif "v_hat_kms" in fill_row.index:
+            rel = float(fill_row["v_hat_kms"])
+        if "epoch_ccf_abs_fill" in fill_row.index:
+            abs_fill = float(fill_row["epoch_ccf_abs_fill"])
+        if "sigma_kms" in fill_row.index:
+            sig = float(fill_row["sigma_kms"])
+        if "n_abs_anchors" in fill_row.index:
+            try:
+                n_anch = float(fill_row["n_abs_anchors"])
+            except (TypeError, ValueError):
+                n_anch = float("nan")
+        if "relative_only" in fill_row.index:
+            rel_only = bool(fill_row["relative_only"])
+    out["epoch_ccf_rel"] = rel
+    out["epoch_ccf_abs_fill"] = abs_fill
+    out["epoch_ccf_sigma_kms"] = sig
+    out["epoch_ccf_n_abs_anchors"] = n_anch
+    out["epoch_ccf_relative_only"] = rel_only
+    return out
+
+
+def epoch_ccf_product_method_rows(fill_row: pd.Series) -> list[dict]:
+    """
+    Build optional diagnostics-style method rows for epoch-CCF products.
+
+    Methods ``epoch_ccf_rel`` and ``epoch_ccf_abs_fill`` use ``chunk_key=all``.
+    They are **excluded** from :func:`darkhunter_rv.method_evaluation.recommend_adopted_rv`
+    and fusion v2 until a later explicit policy switch.
+
+    Parameters
+    ----------
+    fill_row
+        One row from ``epoch_ccf_abs_fill.csv``.
+
+    Returns
+    -------
+    list of dict
+        Zero, one, or two rows (abs fill omitted when relative-only / non-finite).
+    """
+    rows: list[dict] = []
+    rel = float(fill_row["epoch_ccf_rel"]) if "epoch_ccf_rel" in fill_row.index else float(
+        fill_row.get("v_hat_kms", float("nan"))
+    )
+    sig = float(fill_row["sigma_kms"]) if "sigma_kms" in fill_row.index else float("nan")
+    qc = bool(np.isfinite(rel) and np.isfinite(sig) and sig > 0)
+    base = {
+        "chunk_key": "all",
+        "rv_kms": rel,
+        "rv_err_kms": sig if np.isfinite(sig) else float("nan"),
+        "exposure_rv_kms": rel,
+        "exposure_rv_err_kms": sig if np.isfinite(sig) else float("nan"),
+        "qc_pass": qc,
+        "qc_reason": "epoch_ccf_product" if qc else "epoch_ccf_nonfinite",
+    }
+    rows.append({**base, "method": "epoch_ccf_rel"})
+    abs_fill = (
+        float(fill_row["epoch_ccf_abs_fill"])
+        if "epoch_ccf_abs_fill" in fill_row.index
+        else float("nan")
+    )
+    rel_only = bool(fill_row["relative_only"]) if "relative_only" in fill_row.index else True
+    if (not rel_only) and np.isfinite(abs_fill):
+        rows.append(
+            {
+                **base,
+                "method": "epoch_ccf_abs_fill",
+                "rv_kms": abs_fill,
+                "exposure_rv_kms": abs_fill,
+                "qc_pass": bool(np.isfinite(abs_fill) and np.isfinite(sig) and sig > 0),
+                "qc_reason": "epoch_ccf_abs_fill" if np.isfinite(abs_fill) else "epoch_ccf_nonfinite",
+            }
+        )
+    return rows
+
+
+def enrich_diagnostics_with_epoch_ccf_fill(
+    *,
+    diagnostics_glob: str,
+    fill_csv: Path,
+    out_dir: Path,
+    append_method_rows: bool = True,
+) -> list[Path]:
+    """
+    Opt-in post-process: copy diagnostics CSVs and attach epoch-CCF product fields.
+
+    When matrix artifacts exist, matches ``Gaia_DR3_<id>_epoch_<N>_diagnostics.csv``
+    to fill rows by epoch index. Writes enriched files under ``out_dir`` (same
+    basenames). Does **not** overwrite inputs and does **not** change default
+    adopted RV.
+
+    Parameters
+    ----------
+    diagnostics_glob
+        Glob of ``*_diagnostics.csv`` files.
+    fill_csv
+        ``epoch_ccf_abs_fill.csv`` from :func:`run_matrix`.
+    out_dir
+        Destination directory for enriched copies.
+    append_method_rows
+        If True, append ``epoch_ccf_rel`` / ``epoch_ccf_abs_fill`` method rows.
+
+    Returns
+    -------
+    list of Path
+        Written enriched diagnostics paths.
+    """
+    by_ep = load_epoch_ccf_fill_by_epoch(Path(fill_csv))
+    if not by_ep:
+        raise FileNotFoundError(f"No usable epoch fill table at {fill_csv}")
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for path_str in sorted(glob.glob(str(diagnostics_glob))):
+        path = Path(path_str)
+        m = _DIAG_EPOCH_RE.search(path.name)
+        if not m:
+            continue
+        ep = int(m.group(2))
+        fill_row = by_ep.get(ep)
+        df = pd.read_csv(path)
+        enriched = attach_epoch_ccf_fill_columns(df, fill_row)
+        if append_method_rows and fill_row is not None:
+            extra = epoch_ccf_product_method_rows(fill_row)
+            if extra:
+                enriched = pd.concat([enriched, pd.DataFrame(extra)], ignore_index=True)
+        dest = out_dir / path.name
+        enriched.to_csv(dest, index=False)
+        written.append(dest)
+    return written
+
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--gaia-id", required=True, help="Gaia DR3 source id")
@@ -502,6 +702,25 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1.0,
         help="Multiply off-diagonal sigma_ij (short-pair inflation; default 1)",
     )
+    p.add_argument(
+        "--enrich-diagnostics-glob",
+        default=None,
+        help=(
+            "Opt-in: glob of *_diagnostics.csv to copy with epoch_ccf_rel / "
+            "epoch_ccf_abs_fill columns (and optional method rows). Requires fill CSV."
+        ),
+    )
+    p.add_argument(
+        "--enrich-out-dir",
+        type=Path,
+        default=None,
+        help="Directory for enriched diagnostics copies (required with --enrich-diagnostics-glob)",
+    )
+    p.add_argument(
+        "--enrich-no-method-rows",
+        action="store_true",
+        help="With --enrich-diagnostics-glob, attach columns only (no epoch_ccf_* method rows)",
+    )
     p.add_argument("--log-level", default="INFO")
     return p
 
@@ -523,7 +742,24 @@ def main(argv: list[str] | None = None) -> int:
         abs_method=str(args.abs_method),
         sigma_ij_scale=float(args.sigma_ij_scale),
     )
-    print(json.dumps({k: meta[k] for k in (
+    enrich_paths: list[str] = []
+    if args.enrich_diagnostics_glob:
+        if args.enrich_out_dir is None:
+            raise SystemExit("--enrich-out-dir is required with --enrich-diagnostics-glob")
+        fill_csv = meta.get("fill_csv")
+        if not fill_csv:
+            raise SystemExit("No fill CSV in matrix meta; cannot enrich diagnostics")
+        written = enrich_diagnostics_with_epoch_ccf_fill(
+            diagnostics_glob=str(args.enrich_diagnostics_glob),
+            fill_csv=Path(fill_csv),
+            out_dir=Path(args.enrich_out_dir),
+            append_method_rows=not bool(args.enrich_no_method_rows),
+        )
+        enrich_paths = [str(p) for p in written]
+        meta["enriched_diagnostics"] = enrich_paths
+        logger.info("Enriched %d diagnostics -> %s", len(written), args.enrich_out_dir)
+
+    payload = {k: meta[k] for k in (
         "gaia_id",
         "n_epochs",
         "pairs_csv",
@@ -534,7 +770,11 @@ def main(argv: list[str] | None = None) -> int:
         "diag_abs_max_kms",
         "n_abs_delta_comparisons",
         "abs_delta_residual_rms_kms",
-    )}, indent=2))
+    )}
+    if enrich_paths:
+        payload["enriched_diagnostics_n"] = len(enrich_paths)
+        payload["enriched_diagnostics_dir"] = str(args.enrich_out_dir)
+    print(json.dumps(payload, indent=2))
     return 0
 
 

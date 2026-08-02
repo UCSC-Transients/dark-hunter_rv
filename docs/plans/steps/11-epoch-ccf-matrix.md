@@ -1,10 +1,12 @@
 ---
 step_id: 11-epoch-ccf-matrix
 phase: C
-status: in_progress
+status: in_progress  # 11a–d enrich done; default adopt still human gate
 github_issue: https://github.com/UCSC-Transients/dark-hunter_rv/issues/94
 branches:
   - step/11-epoch-ccf-matrix
+  - step/11-epoch-ccf-matrix-cli
+merged: 2026-08-02 via #95/#98 → #101 (c6801f7)
 depends_on: [01-benchmark-cool-precision]
 blocks: [03-method-fusion-coverage]
 # Soft: fusion can consume epoch_ccf fills; matrix work can start before fusion
@@ -99,8 +101,10 @@ A_i^{\mathrm{obs}} = v_i + \eta_i, \quad \mathrm{Var}(\eta_i) = \sigma_{A,i}^2
 ### 11d — Product wiring
 
 - [x] Optional pipeline / post-process rows: `epoch_ccf_rel`, `epoch_ccf_abs_fill` (matrix CLI CSV columns; **not** default adopted RV)
-- [ ] Document interaction with step 03 fusion (epoch fill as prior or post-fusion salvage)
+- [x] Opt-in enrich hook: `--enrich-diagnostics-glob` / `--enrich-out-dir` attaches columns (+ optional method rows) when matrix fill exists; **not** default adopted RV
+- [x] Document interaction with step 03 fusion (epoch fill as optional prior / post-fusion salvage, not cascade replacement) in `docs/rv_methods_evaluation.md`
 - [x] Playbook recipe for low-S/N multi-epoch stars
+- [ ] Human accept: enable `epoch_ccf_*` as default adopted RV (still open — leave step `in_progress`)
 
 ## Parallel subagent split
 

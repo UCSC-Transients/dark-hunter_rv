@@ -11,8 +11,11 @@ import pytest
 from darkhunter_rv import config
 from darkhunter_rv.epoch_ccf import build_relative_matrix_from_pairs
 from validation.epoch_ccf_matrix import (
+    attach_epoch_ccf_fill_columns,
     compute_pair_matrix,
     discover_epoch_spectra,
+    enrich_diagnostics_with_epoch_ccf_fill,
+    epoch_ccf_product_method_rows,
     load_abs_from_diagnostics,
     main,
     run_matrix,
@@ -185,3 +188,130 @@ def test_cli_main_synthetic(tmp_path: Path):
     assert meta["n_epochs"] == 2
     assert meta["float_zeropoint"] is True
     assert meta["n_abs_anchors"] == 0
+
+
+def test_enrich_diagnostics_attach_columns_and_method_rows(tmp_path: Path):
+    gid = "7776665554443332221"
+    # Minimal fill table (abs-anchored)
+    fill = pd.DataFrame(
+        {
+            "gaia_id": [gid, gid],
+            "epoch": [1, 2],
+            "v_hat_kms": [10.0, 20.0],
+            "sigma_kms": [0.5, 0.6],
+            "n_abs_anchors": [1, 1],
+            "float_zeropoint": [False, False],
+            "relative_only": [False, False],
+            "epoch_ccf_rel": [10.0, 20.0],
+            "epoch_ccf_abs_fill": [10.0, 20.0],
+        }
+    )
+    fill_csv = tmp_path / "epoch_ccf_abs_fill.csv"
+    fill.to_csv(fill_csv, index=False)
+
+    for ep, rv in [(1, 9.5), (2, 19.0)]:
+        pd.DataFrame(
+            {
+                "method": ["mask_ccf"],
+                "chunk_key": ["o35"],
+                "rv_kms": [rv],
+                "rv_err_kms": [0.2],
+                "exposure_rv_kms": [rv],
+                "exposure_rv_err_kms": [0.2],
+                "qc_pass": [True],
+            }
+        ).to_csv(tmp_path / f"Gaia_DR3_{gid}_epoch_{ep}_diagnostics.csv", index=False)
+
+    out = tmp_path / "enriched"
+    written = enrich_diagnostics_with_epoch_ccf_fill(
+        diagnostics_glob=str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
+        fill_csv=fill_csv,
+        out_dir=out,
+        append_method_rows=True,
+    )
+    assert len(written) == 2
+    e1 = pd.read_csv(out / f"Gaia_DR3_{gid}_epoch_1_diagnostics.csv")
+    assert "epoch_ccf_rel" in e1.columns
+    assert float(e1["epoch_ccf_rel"].iloc[0]) == pytest.approx(10.0)
+    assert float(e1["epoch_ccf_abs_fill"].iloc[0]) == pytest.approx(10.0)
+    methods = set(e1["method"].astype(str))
+    assert "epoch_ccf_rel" in methods
+    assert "epoch_ccf_abs_fill" in methods
+    # Original mask row preserved
+    assert "mask_ccf" in methods
+
+    # Columns-only mode
+    out2 = tmp_path / "enriched_cols"
+    enrich_diagnostics_with_epoch_ccf_fill(
+        diagnostics_glob=str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
+        fill_csv=fill_csv,
+        out_dir=out2,
+        append_method_rows=False,
+    )
+    e2 = pd.read_csv(out2 / f"Gaia_DR3_{gid}_epoch_1_diagnostics.csv")
+    assert list(e2["method"].astype(str)) == ["mask_ccf"]
+    assert "epoch_ccf_rel" in e2.columns
+
+
+def test_attach_columns_nan_without_fill_row():
+    df = pd.DataFrame({"method": ["mask_ccf"], "rv_kms": [1.0]})
+    out = attach_epoch_ccf_fill_columns(df, None)
+    assert np.isnan(out["epoch_ccf_rel"].iloc[0])
+    assert np.isnan(out["epoch_ccf_abs_fill"].iloc[0])
+
+
+def test_epoch_ccf_product_method_rows_skips_abs_when_relative_only():
+    row = pd.Series(
+        {
+            "epoch_ccf_rel": 5.0,
+            "epoch_ccf_abs_fill": np.nan,
+            "sigma_kms": 0.4,
+            "relative_only": True,
+        }
+    )
+    rows = epoch_ccf_product_method_rows(row)
+    assert len(rows) == 1
+    assert rows[0]["method"] == "epoch_ccf_rel"
+
+
+def test_cli_enrich_opt_in(tmp_path: Path):
+    gid = "8887776665554443332"
+    for i, rv in enumerate([0.0, 8.0], start=1):
+        _write_fake_spectrum(tmp_path / f"Gaia_DR3_{gid}_epoch_{i}.txt", rv_kms=rv)
+        pd.DataFrame(
+            {
+                "method": ["mask_ccf"],
+                "chunk_key": ["all"],
+                "exposure_rv_kms": [100.0 + rv],
+                "exposure_rv_err_kms": [0.2],
+                "rv_kms": [100.0 + rv],
+                "rv_err_kms": [0.2],
+                "qc_pass": [True],
+            }
+        ).to_csv(tmp_path / f"Gaia_DR3_{gid}_epoch_{i}_diagnostics.csv", index=False)
+    out = tmp_path / "cli_out"
+    enrich = tmp_path / "cli_enrich"
+    rc = main(
+        [
+            "--gaia-id",
+            gid,
+            "--data-root",
+            str(tmp_path),
+            "--out-dir",
+            str(out),
+            "--abs-diagnostics-glob",
+            str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
+            "--rv-search-half-width-kms",
+            "200",
+            "--max-grid-points",
+            "4096",
+            "--enrich-diagnostics-glob",
+            str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
+            "--enrich-out-dir",
+            str(enrich),
+            "--log-level",
+            "WARNING",
+        ]
+    )
+    assert rc == 0
+    assert (enrich / f"Gaia_DR3_{gid}_epoch_1_diagnostics.csv").is_file()
