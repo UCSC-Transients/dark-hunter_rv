@@ -244,9 +244,9 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 
 ### NEXT (orchestrator — 2026-08-02)
 
-1. **Human:** approve Phase 1 push/PRs — suggest **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate. Phase 2 branches (`01-cool-closeout`, `08-external-rv-crosscheck`) → Phase 2 PR when ready.
-2. Launch FUSION-03 (Phase 3) then PLOTS-04
-3. EPOCH-MATRIX + SHORTPAIR-05A after fusion scaffold / Phase 4
+1. **Human:** Phase 1 PRs — **(A)** offsets + 02a/06 docs + orchestrator docs; **(B)** epoch-spike `#94` separate. Phase 2 PR when ready (`01-cool-closeout`, `08-external-rv-crosscheck`).
+2. FUSION-03 in flight (`step/03-method-fusion-coverage`) → then PLOTS-04
+3. EPOCH-MATRIX + SHORTPAIR-05A in Phase 4
 
 ### 0.6 Human session policy (2026-08-02)
 
