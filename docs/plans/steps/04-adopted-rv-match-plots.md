@@ -1,7 +1,7 @@
 ---
 step_id: 04-adopted-rv-match-plots
 phase: D
-status: pending
+status: complete
 github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/41
 branches:
   - step/04-adopted-rv-match-plots
@@ -34,10 +34,10 @@ Routine per-exposure figure: continuum-normalized spectrum with stellar mask and
 
 ## Implementation tasks
 
-- [ ] `plot_adopted_rv_match(spec, adopted_rv, debiased, mask, strong_lines)` in `plotting.py`
-- [ ] Write `{stem}_adopted_rv_match.png` from `process_spectrum`
-- [ ] Include in `--plots-focus` default bundle
-- [ ] One fixture smoke test or validation script check
+- [x] `plot_adopted_rv_match(spec, adopted_rv, debiased, mask, strong_lines)` in `plotting.py`
+- [x] Write `{stem}_adopted_rv_match.png` from `process_spectrum`
+- [x] Include in `--plots-focus` default bundle
+- [x] One fixture smoke test or validation script check
 
 ## Key files
 
@@ -71,3 +71,4 @@ python -m darkhunter_rv.pipeline /path/to/Gaia_DR3_*.txt --instrument APF --plot
 ## Open decisions
 
 - All orders vs single representative order panel?
+  - **Decision (step 04):** multi-panel PNG of up to 6 unique orders (prefer strong-line coverage); full all-order PDFs stay in `plot_legacy_outlier_orders`.

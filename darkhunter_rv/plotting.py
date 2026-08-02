@@ -73,6 +73,97 @@ def plot_normalized_order(
     logger.debug("saved %s", outpath)
 
 
+
+def plot_adopted_rv_match(
+    panels: list[tuple[str, np.ndarray, np.ndarray]],
+    outpath: Path,
+    *,
+    adopted_rv_kms: float,
+    mask_wave: np.ndarray | None = None,
+    mask_strength: np.ndarray | None = None,
+    strong_lines: list[tuple[str, float]] | None = None,
+    title: str = "",
+    rv_source_label: str = "",
+) -> None:
+    """
+    Continuum-normalized order panels with stellar mask + strong-line markers at adopted RV.
+
+    ``panels`` is a list of ``(label, wave_A, flux_norm)``. Mask transmission is Doppler-shifted
+    by ``adopted_rv_kms`` (debiased / fusion-calibrated when the caller supplies that value).
+    Strong-line rests (name, rest Å) are marked at observed wavelengths
+    ``λ_rest * (1 + RV/c)`` when they fall inside the panel.
+
+    Does not require an outlier threshold; intended for routine ``--plots`` / ``--plots-focus``.
+    """
+    outpath = Path(outpath)
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    if not panels:
+        logger.warning("plot_adopted_rv_match: no panels; skip %s", outpath)
+        return
+    if not np.isfinite(float(adopted_rv_kms)):
+        logger.warning("plot_adopted_rv_match: non-finite adopted RV; skip %s", outpath)
+        return
+
+    rv = float(adopted_rv_kms)
+    beta = 1.0 + rv / config.C_KMS
+    n = len(panels)
+    fig, axes = plt.subplots(n, 1, figsize=(10, max(2.2, 2.0 * n)), sharex=False, squeeze=False)
+    src = f" ({rv_source_label})" if rv_source_label else ""
+    fig.suptitle(
+        (title + "\n" if title else "")
+        + f"Adopted RV match @ {rv:+.3f} km/s{src}",
+        fontsize=10,
+    )
+
+    mw = np.asarray(mask_wave, float) if mask_wave is not None else None
+    ms = np.asarray(mask_strength, float) if mask_strength is not None else None
+    lines = list(strong_lines) if strong_lines else []
+
+    for i, (label, wave, flux_norm) in enumerate(panels):
+        ax = axes[i, 0]
+        w = np.asarray(wave, float)
+        f = np.asarray(flux_norm, float)
+        ax.plot(w, f, "k-", lw=0.55, label="flux (norm)")
+        if mw is not None and ms is not None and len(mw) == len(ms) and len(mw) > 5:
+            trans = _mask_transmission_shifted_native(w, mw, ms, rv)
+            if trans is not None:
+                ax.plot(
+                    w,
+                    trans,
+                    "b-",
+                    lw=0.8,
+                    alpha=0.85,
+                    label=f"mask @ {rv:+.2f} km/s",
+                )
+        for name, rest in lines:
+            w_obs = float(rest) * beta
+            if float(np.nanmin(w)) <= w_obs <= float(np.nanmax(w)):
+                ax.axvline(w_obs, color="tab:orange", ls="--", lw=0.9, alpha=0.9)
+                ymax = ax.get_ylim()[1] if ax.get_ylim()[1] > ax.get_ylim()[0] else 1.05
+                ax.text(
+                    w_obs,
+                    ymax,
+                    str(name),
+                    color="tab:orange",
+                    fontsize=7,
+                    rotation=90,
+                    va="top",
+                    ha="right",
+                    clip_on=True,
+                )
+        ax.axhline(1.0, color="gray", ls=":", lw=0.7)
+        ax.set_ylabel("Norm flux")
+        ax.set_title(str(label), fontsize=9)
+        if i == 0:
+            ax.legend(fontsize=7, loc="upper right")
+        ax.set_xlabel("Wavelength (A)")
+
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.savefig(outpath, dpi=130)
+    plt.close(fig)
+    logger.debug("saved %s", outpath)
+
+
 def plot_ccf(
     vel: np.ndarray,
     ccf: np.ndarray,

@@ -586,6 +586,46 @@ def _mask_tournament(
     return best_pack, best_name, scores
 
 
+
+def _panels_for_adopted_rv_match(
+    chunk_preps: list[dict],
+    strong_lines: list[tuple[str, float]] | None,
+    *,
+    max_panels: int = 6,
+) -> list[tuple[str, np.ndarray, np.ndarray]]:
+    """Pick up to ``max_panels`` unique-order norm chunks; prefer orders covering strong lines."""
+    by_order: dict[int, tuple[str, np.ndarray, np.ndarray]] = {}
+    for prep in chunk_preps:
+        ck = str(prep.get("chunk_key", ""))
+        o, _sort, _kind = chunking.parse_chunk_key(ck)
+        if o is None:
+            continue
+        oi = int(o)
+        nw = np.asarray(prep.get("nw"), float)
+        nf = np.asarray(prep.get("nf"), float)
+        if nw.size < 10 or nf.size != nw.size:
+            continue
+        if oi not in by_order:
+            by_order[oi] = (ck, nw, nf)
+
+    lines = list(strong_lines) if strong_lines else []
+    scored: list[tuple[int, int, str, np.ndarray, np.ndarray]] = []
+    for oi, (ck, nw, nf) in by_order.items():
+        wmin, wmax = float(nw[0]), float(nw[-1])
+        hits = 0
+        for _name, rest in lines:
+            r = float(rest)
+            if wmin <= r <= wmax:
+                hits += 1
+        scored.append((hits, oi, ck, nw, nf))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    picked = scored[: max(1, int(max_panels))]
+    # Stable wavelength order for readability
+    picked.sort(key=lambda t: t[1])
+    return [(ck, nw, nf) for _h, _o, ck, nw, nf in picked]
+
+
+
 def process_spectrum(
     spectrum_file: str,
     args: argparse.Namespace,
@@ -1701,6 +1741,51 @@ def process_spectrum(
             rv_row = row.get("rv_kms", np.nan)
             row["residual_to_exposure_kms"] = float(rv_row - mean_rv) if np.isfinite(rv_row) and np.isfinite(mean_rv) else np.nan
 
+
+    # Routine adopted-RV match figure (--plots and --plots-focus); no outlier threshold.
+    if plot_root is not None and chunk_preps and np.isfinite(float(mean_rv)):
+        plot_rv = float(mean_rv)
+        rv_src = "cascade adopted (debiased)"
+        if run_multi and diagnostics_rows:
+            # Inline: method_evaluation imports pipeline helpers (circular if top-level).
+            from . import method_evaluation as me
+            from . import method_fusion as mf
+
+            fl_plot = me.exposure_method_flags(diagnostics_rows)
+            mo_arg = getattr(args, "method_offsets_file", None)
+            mo_path = Path(mo_arg) if mo_arg is not None else None
+            if mo_path is not None and not mo_path.is_file():
+                mo_path = None
+            if mo_path is None:
+                mo_path = config.METHOD_OFFSETS_FILE
+            off_tbl_plot: dict = {}
+            if mo_path is not None and mo_path.is_file():
+                off_tbl_plot = io_utils.read_method_rv_offsets(mo_path, warn_if_missing=False)
+            off_row_plot = off_tbl_plot.get(str(instrument.name)) if off_tbl_plot else None
+            fl_off_plot = me.flags_with_method_offsets(fl_plot, off_row_plot)
+            fus = mf.fuse_exposure(fl_off_plot, teff=float(teff_diag))
+            rv_cal = float(fus.get("rv_calibrated_kms", float("nan")))
+            if bool(fus.get("rv_accepted", False)) and np.isfinite(rv_cal):
+                plot_rv = rv_cal
+                am2 = str(fus.get("adopted_method_v2", "") or "")
+                rv_src = f"fusion rv_calibrated ({am2})" if am2 else "fusion rv_calibrated"
+        try:
+            sl_rests = rv_core.strong_line_rests_for_teff(float(teff_diag))
+        except Exception:
+            sl_rests = []
+        panels = _panels_for_adopted_rv_match(chunk_preps, sl_rests, max_panels=6)
+        if panels:
+            plotting.plot_adopted_rv_match(
+                panels,
+                plot_root / f"{stem}_adopted_rv_match.png",
+                adopted_rv_kms=plot_rv,
+                mask_wave=np.asarray(mw, float) if mw is not None else None,
+                mask_strength=np.asarray(ms, float) if ms is not None else None,
+                strong_lines=sl_rests,
+                title=stem,
+                rv_source_label=rv_src,
+            )
+
     # Write per-spectrum diagnostics CSV
     if diagnostics_rows and not plots_only:
         pd.DataFrame(diagnostics_rows).to_csv(diag_path, index=False)
@@ -1809,7 +1894,7 @@ def main(argv: list[str] | None = None) -> None:
         "--plots-focus",
         action="store_true",
         dest="plots_focus",
-        help="With --plots: only chunk_rvs, rv_vs_order, ccf_orders, and strong_lines Hβ diagnostic PNG (skip per-order norm/CCF/FFT/etc.)",
+        help="With --plots: only chunk_rvs, rv_vs_order, ccf_orders, adopted_rv_match, and strong_lines Hβ diagnostic PNG (skip per-order norm/CCF/FFT/etc.)",
     )
     parser.add_argument(
         "--plots-skip-chunk-pngs",

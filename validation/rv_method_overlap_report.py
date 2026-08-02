@@ -44,6 +44,7 @@ from darkhunter_rv.method_evaluation import (  # noqa: E402
     exposure_method_flags,
     recommend_adopted_rv,
 )
+from darkhunter_rv.method_fusion import fuse_exposure
 
 
 def _gaia_from_path(s: str) -> int | None:
@@ -175,6 +176,11 @@ def main(argv: list[str] | None = None) -> int:
         default=float(dh_config.COMPARISON_REPORT_MAX_RV_ERR_KMS),
         help="Mask/template residual plots: require both σ ≤ this value (km/s).",
     )
+    ap.add_argument(
+        "--with-fusion",
+        action="store_true",
+        help="Add method_fusion calibrated columns to overlap_enriched_per_exposure.csv.",
+    )
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
 
@@ -274,6 +280,18 @@ def main(argv: list[str] | None = None) -> int:
                 "adopted_err_kms": ad["adopted_err_kms"],
             }
         )
+        if args.with_fusion:
+            fus = fuse_exposure(fl, teff=teff)
+            rows_out[-1].update(
+                {
+                    "adopted_method_v2": fus["adopted_method_v2"],
+                    "rv_calibrated_kms": fus["rv_calibrated_kms"],
+                    "sigma_eff_kms": fus["sigma_eff_kms"],
+                    "rv_accepted": bool(fus["rv_accepted"]),
+                    "reject_reason": fus["reject_reason"],
+                    "inter_method_spread_kms": fus["inter_method_spread_kms"],
+                }
+            )
 
     tab = pd.DataFrame(rows_out)
     tab.to_csv(args.out_dir / "overlap_enriched_per_exposure.csv", index=False)

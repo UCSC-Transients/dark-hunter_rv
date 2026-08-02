@@ -1,7 +1,7 @@
 ---
 step_id: 03-method-fusion-coverage
 phase: C
-status: pending
+status: complete
 github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/40
 branches:
   - step/03-method-fusion-coverage
@@ -35,11 +35,11 @@ Honest adopted RVs with calibrated uncertainties, explicit rejections, and cover
 
 ## Implementation tasks
 
-- [ ] Add `method_fusion.py` (bias surfaces, σ inflation, discordance gates)
-- [ ] Extend `rv_method_diagnostics_report.py` with `binned_method_coverage_vs_teff.csv`
-- [ ] Wire optional fusion columns to diagnostics or post-process CSV
-- [ ] Tests for reject rules and coverage denominators
-- [ ] Document adoption v2 in `docs/rv_methods_evaluation.md`
+- [x] Add `method_fusion.py` (bias surfaces, σ inflation, discordance gates)
+- [x] Extend `rv_method_diagnostics_report.py` with `binned_method_coverage_vs_teff.csv`
+- [x] Wire optional fusion columns to diagnostics or post-process CSV
+- [x] Tests for reject rules and coverage denominators
+- [x] Document adoption v2 in `docs/rv_methods_evaluation.md`
 
 ## Key files
 
@@ -58,9 +58,9 @@ PYTHONPATH=. python -m pytest tests/test_method_evaluation.py -q
 
 ## Acceptance criteria
 
-- Coverage report shows N_total vs N_finite per method (not only frac_bad among finite)
-- Fusion rejects exposures with large method discordance despite small formal σ
-- Unit tests cover tiered policy edge cases
+- [x] Coverage report shows N_total vs N_finite per method (not only frac_bad among finite)
+- [x] Fusion rejects exposures with large method discordance despite small formal σ
+- [x] Unit tests cover tiered policy edge cases
 
 ## Tests / validation
 
@@ -75,3 +75,4 @@ PYTHONPATH=. python -m pytest tests/test_method_evaluation.py -q
 ## Open decisions
 
 - Apply fusion in pipeline by default or opt-in flag first?
+  **Decision (step 03):** opt-in first via `--with-fusion` on diagnostics/overlap reports; pipeline cascade remains v1 until a later switch.
