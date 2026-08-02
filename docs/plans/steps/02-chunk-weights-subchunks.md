@@ -86,12 +86,13 @@ bash scripts/refit_all_per_object_parallel.sh
 - [x] Implement trust weights (residual vs robust mean, telluric fraction, CCF quality) scaling IVW in `pipeline.py`
 - [x] Add weight columns to diagnostics CSV
 - [x] Version `order_chunk_qc.yaml` thresholds
-- [x] Offline A/B vs IVW-only: `validation/trust_weight_ab_report.py` (re-stack from diagnostics)
-  - Post-#103 sample (200 `output/` exposures): median formal σ **off 0.16 → on 0.32 km/s** (ratio ~2.4); median |ΔRV| ~0.77 km/s
-  - **Keep default off** until human reviews `validation_output/trust_ab_post103/` and relative-gate campaign
-- [ ] Optional: full relative-gate campaign re-run with `--trust-weights` (heavy; not blocking)
+- [x] Offline A/B vs IVW-only: `validation/trust_weight_ab_report.py` (re-stack from diagnostics; supports `--teff-max` + relative gate)
+  - Cool Teff<5000 (`output/`, n=16): median formal σ **0.022 → 0.035 km/s** (ratio ~1.59); relative pairs=0
+  - First 200 `output/` diags: median formal σ **0.160 → 0.425 km/s** (ratio ~2.20); relative median |ΔRV| **9.67 → 7.52 km/s** (46 pairs)
+  - **Keep default off** — formal σ rises under trust; human review `validation_output/trust_ab_post103/`
+- [ ] Optional: full pipeline campaign with `--trust-weights` (heavy; not blocking if offline A/B accepted)
 
-**Note:** Implementation ships **opt-in** (`trust_weights.enabled: false`; CLI `--trust-weights`). Campaign σ_RV / relative-gate A/B still open. Historical deferral (wait for template baseline) remains valid for *tuning*; code path ready.
+**Note:** Implementation ships **opt-in** (`trust_weights.enabled: false`; CLI `--trust-weights`). Offline σ_RV + relative-gate A/B captured post-#103; default remains off.
 
 **Defer 02b** until template lane baseline (step 10) is captured — avoids retuning weights twice.
 

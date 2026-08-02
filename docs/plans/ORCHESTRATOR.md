@@ -245,11 +245,11 @@ Phase 5  02b trust weights, 07 SB2, 08 full
 ### NEXT (orchestrator — 2026-08-02 post-#103)
 
 1. ~~PR #103 soft-residuals~~ **MERGED** `a174732` (docs + 11d + SB2 fuse + NSS CLI).
-2. Soft residuals remaining:
+2. Soft residuals progress / remaining:
    - **11d** default adopt = human gate only
    - **SB2** real NSS ID dump (CLI+stub on main; science fractions need catalog)
-   - **Trust 02b** offline A/B tool landed (`validation/trust_weight_ab_report.py`); campaign note: on 200 `output/` exposures trust raises median formal σ (~2.4×) — keep **opt-in**, do not enable default without human review of `validation_output/trust_ab_post103/`
-   - **08** lit overlap **n_stars=8** (max with current spectra∩`literature_rv_master`); n≥10 needs more spectra for 15 missing master IDs or expanded master
+   - **Trust 02b** offline A/B done (`validation/trust_weight_ab_report.py` → `validation_output/trust_ab_post103/`): cool Teff<5000 median σ 0.022→0.035 km/s (×1.59); n=200 median σ ×~2.2 + relative gate 9.67→7.52 km/s. **Keep opt-in / default off.**
+   - **08** lit: `template_fft_baseline` n=4; richest `output/` **n_stars=8** (PARTIAL; spectra∩master=8/23). n≥10 needs ≥2 more master-ID spectra + reduce, or expand master.
 3. Pre-final: bias rebuild + ziggy (§12.1) when human says go
 4. Close/comment issues #38–#45 / #94 as appropriate when residuals land
 

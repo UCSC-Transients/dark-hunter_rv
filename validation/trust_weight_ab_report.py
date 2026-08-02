@@ -6,16 +6,17 @@ without re-running the pipeline. Uses existing ``*_diagnostics.csv`` chunk rows.
 Example::
 
   cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
-  PYTHONPATH=. python -m validation.trust_weight_ab_report \\
-    --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' \\
-    --out-dir validation_output/trust_ab_post103 \\
-    --max-files 200
+  PYTHONPATH=. python -m validation.trust_weight_ab_report \
+    --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' \
+    --out-dir validation_output/trust_ab_post103 \
+    --teff-max 5000
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 from glob import glob
 from pathlib import Path
 
@@ -23,10 +24,25 @@ import numpy as np
 import pandas as pd
 
 from darkhunter_rv import qc
+from validation.chunk_calibration import relative_pair_table, summarize_relative_gate
 
 
 def _finite_mask(rv: np.ndarray, err: np.ndarray) -> np.ndarray:
     return np.isfinite(rv) & np.isfinite(err) & (err > 0)
+
+
+def _gaia_id_from_stem(stem: str) -> str:
+    m = re.search(r"Gaia_DR3_(\d+)", stem)
+    return m.group(1) if m else stem
+
+
+def _ccf_snr_series(chunk_df: pd.DataFrame) -> pd.Series:
+    """Prefer ``ccf_peak_snr`` (pipeline); fall back to ``ccf_peak`` for synthetic tests."""
+    if "ccf_peak_snr" in chunk_df.columns:
+        return pd.to_numeric(chunk_df["ccf_peak_snr"], errors="coerce")
+    if "ccf_peak" in chunk_df.columns:
+        return pd.to_numeric(chunk_df["ccf_peak"], errors="coerce")
+    return pd.Series(np.nan, index=chunk_df.index)
 
 
 def stack_exposure(
@@ -36,11 +52,12 @@ def stack_exposure(
     enabled: bool,
 ) -> dict:
     """IVW stack one exposure's mask_ccf chunk rows."""
-    rv = pd.to_numeric(chunk_df["rv_kms"], errors="coerce").to_numpy(float)
-    err = pd.to_numeric(chunk_df["rv_err_kms"], errors="coerce").to_numpy(float)
+    work = chunk_df.reset_index(drop=True)
+    rv = pd.to_numeric(work["rv_kms"], errors="coerce").to_numpy(float)
+    err = pd.to_numeric(work["rv_err_kms"], errors="coerce").to_numpy(float)
     ok = _finite_mask(rv, err)
-    if "qc_pass" in chunk_df.columns:
-        qc_ok = chunk_df["qc_pass"].map(
+    if "qc_pass" in work.columns:
+        qc_ok = work["qc_pass"].map(
             lambda x: True if x is True or str(x).lower() in {"true", "1"} else False
         ).to_numpy(bool)
         ok = ok & qc_ok
@@ -54,19 +71,16 @@ def stack_exposure(
             "median_abs_resid": float("nan"),
         }
     robust = float(np.median(rv))
+    work_ok = work.loc[ok].reset_index(drop=True)
     tel = (
-        pd.to_numeric(chunk_df.loc[ok, "telluric_fraction"], errors="coerce").to_numpy(float)
-        if "telluric_fraction" in chunk_df.columns
+        pd.to_numeric(work_ok["telluric_fraction"], errors="coerce").to_numpy(float)
+        if "telluric_fraction" in work_ok.columns
         else np.full(rv.size, np.nan)
     )
-    peak = (
-        pd.to_numeric(chunk_df.loc[ok, "ccf_peak"], errors="coerce").to_numpy(float)
-        if "ccf_peak" in chunk_df.columns
-        else np.full(rv.size, np.nan)
-    )
+    peak = _ccf_snr_series(work_ok).to_numpy(float)
     asym = (
-        pd.to_numeric(chunk_df.loc[ok, "ccf_asymmetry"], errors="coerce").to_numpy(float)
-        if "ccf_asymmetry" in chunk_df.columns
+        pd.to_numeric(work_ok["ccf_asymmetry"], errors="coerce").to_numpy(float)
+        if "ccf_asymmetry" in work_ok.columns
         else np.full(rv.size, np.nan)
     )
     trusts = []
@@ -100,11 +114,26 @@ def stack_exposure(
     }
 
 
+def _exposure_teff(df: pd.DataFrame) -> float:
+    if "teff" not in df.columns:
+        return float("nan")
+    series = pd.to_numeric(df["teff"], errors="coerce").dropna()
+    return float(series.iloc[0]) if not series.empty else float("nan")
+
+
+def _exposure_mjd(df: pd.DataFrame) -> float:
+    if "mjd" not in df.columns:
+        return float("nan")
+    series = pd.to_numeric(df["mjd"], errors="coerce").dropna()
+    return float(series.iloc[0]) if not series.empty else float("nan")
+
+
 def run_ab(
     diagnostics_glob: str,
     *,
     qc_config: Path,
     max_files: int | None = None,
+    teff_max: float | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     trust_cfg = qc.load_trust_weights_config(qc_config)
     paths = sorted(glob(diagnostics_glob))
@@ -119,6 +148,10 @@ def run_ab(
             continue
         if df.empty or "method" not in df.columns:
             continue
+        teff = _exposure_teff(df)
+        if teff_max is not None and np.isfinite(teff_max):
+            if not np.isfinite(teff) or teff >= float(teff_max):
+                continue
         mask = df[df["method"].astype(str) == "mask_ccf"].copy()
         if "chunk_key" in mask.columns:
             mask = mask[mask["chunk_key"].astype(str) != "all"]
@@ -126,10 +159,14 @@ def run_ab(
             continue
         off = stack_exposure(mask, trust_cfg=trust_cfg, enabled=False)
         on = stack_exposure(mask, trust_cfg=trust_cfg, enabled=True)
+        stem = path.name.replace("_diagnostics.csv", "")
         rows.append(
             {
                 "diagnostics_path": str(path),
-                "stem": path.name.replace("_diagnostics.csv", ""),
+                "stem": stem,
+                "gaia_dr3_id": _gaia_id_from_stem(stem),
+                "mjd": _exposure_mjd(df),
+                "teff": teff,
                 "n_chunks": off["n_chunks"],
                 "rv_off_kms": off["rv_kms"],
                 "err_off_kms": off["err_kms"],
@@ -150,8 +187,9 @@ def run_ab(
             }
         )
     per = pd.DataFrame(rows)
-    summary = {
+    summary: dict = {
         "n_exposures": int(len(per)),
+        "teff_max": teff_max,
         "median_err_off_kms": float(per["err_off_kms"].median()) if len(per) else float("nan"),
         "median_err_on_kms": float(per["err_on_kms"].median()) if len(per) else float("nan"),
         "median_err_ratio_on_over_off": float(per["err_ratio_on_over_off"].median())
@@ -162,6 +200,20 @@ def run_ab(
         else float("nan"),
         "qc_config": str(qc_config),
     }
+    if len(per) >= 2 and "gaia_dr3_id" in per.columns:
+        for label, rv_col, err_col in (
+            ("off", "rv_off_kms", "err_off_kms"),
+            ("on", "rv_on_kms", "err_on_kms"),
+        ):
+            epochs = per.rename(columns={rv_col: "rv_stack_kms", err_col: "err_stack_kms"})[
+                ["gaia_dr3_id", "stem", "mjd", "rv_stack_kms", "err_stack_kms"]
+            ].copy()
+            epochs["file"] = epochs["stem"].astype(str)
+            pairs = relative_pair_table(
+                epochs, rv_col="rv_stack_kms", err_col="err_stack_kms", pair_window_days=7.0
+            )
+            gate = summarize_relative_gate(pairs, goal_kms=0.1)
+            summary[f"relative_gate_{label}"] = gate
     return per, summary
 
 
@@ -171,12 +223,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--qc-config", type=Path, default=Path("order_chunk_qc.yaml"))
     ap.add_argument("--out-dir", type=Path, default=Path("validation_output/trust_ab"))
     ap.add_argument("--max-files", type=int, default=0, help="0 = all")
+    ap.add_argument(
+        "--teff-max",
+        type=float,
+        default=None,
+        help="Keep exposures with Teff < this (cool subset); default = no cut",
+    )
     args = ap.parse_args(argv)
 
     per, summary = run_ab(
         args.diagnostics_glob,
         qc_config=args.qc_config,
         max_files=args.max_files or None,
+        teff_max=args.teff_max,
     )
     out = args.out_dir
     out.mkdir(parents=True, exist_ok=True)
