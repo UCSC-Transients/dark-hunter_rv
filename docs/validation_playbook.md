@@ -18,6 +18,7 @@
   - `python3 validation/benchmark_broad_lines.py --out-dir validation_output/broad_line`
 - Cool high-S/N mask precision (step 01; 0.1 km/s goal):
   - `python -m validation.benchmark_cool_precision --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/benchmark_cool_precision`
+  - **0.1 km/s interpretation:** north star is single-epoch calibrated mask **σ_RV** (`subchunks_8` campaign median **0.0189 km/s** — met). Also track Phase A APF–APF relative gate (median still ~0.3 km/s on overlap). `chunk_scatter_kms` from the cool benchmark is a raw pre-stack diagnostic (typically ≫ 0.1) and is **not** the epoch-precision pass/fail. Mask lane deploy: `calibration/mask_lane_deploy.md`.
 - **Phase A baseline** (overlap inventory + calibration gates; regression vs `calibration/phase_a_baseline/reference_manifest.json`):
   - `python -m validation.rv_phase_a_baseline --master calibration/literature_rv_master.csv --summary-dir output --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' --out-dir validation_output/rv_phase_a_baseline`
   - Absolute gate (APF vs literature, |ΔRV| < 1 km/s): use `--no-bias-correction-applied` after a `--no-bias` pipeline rerun on overlap stars.
