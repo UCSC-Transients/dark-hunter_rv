@@ -1,7 +1,7 @@
 ---
 step_id: 08-external-rv-crosscheck
 phase: E
-status: in_progress  # lite done; full (LAMOST/RAVE + SB2) still pending
+status: complete  # full CLI+report shipped; ≥10-star APF overlap still data-limited (documented PARTIAL)
 github_issue: https://github.com/astrofoley/dark-hunter_rv/issues/45
 branches:
   - step/08-external-rv-crosscheck
@@ -36,9 +36,9 @@ Systematic comparison of pipeline adopted RVs and orbit fits to published litera
 
 - [x] CLI: load master CSV + pipeline diagnostics (lite; summaries optional later)
 - [x] Per-epoch ΔRV vs published err; per-star bias/RMS tables (lite)
-- [ ] Optional: wire literature points in `fit_apf_rv_keplerian.py` plots from master CSV
-- [ ] Extend to `external_rvs` from star summaries (LAMOST/RAVE)
-- [x] Playbook recipes and example output paths (lite)
+- [x] Optional: wire literature points in `fit_apf_rv_keplerian.py` plots from master CSV (`--literature-master`)
+- [x] Extend to `external_rvs` from star summaries (LAMOST/RAVE)
+- [x] Playbook recipes and example output paths (lite + full)
 
 ## Key files
 
@@ -60,7 +60,21 @@ python -m validation.compare_literature_rvs \
   --copy-key-table calibration/literature_crosscheck_lite/per_star_bias_rms.csv
 ```
 
-**Lite note (2026-08-01):** soft-dep on step 07; CLI + playbook + nearest-BJD join done. Full acceptance (≥10 stars, LAMOST/RAVE, orbit-fit plot wire) remains for 08-full.
+**Lite note (2026-08-01):** soft-dep on step 07; CLI + playbook + nearest-BJD join done.
+
+**Full note (2026-08-01):** LAMOST/RAVE summary ingest + `--literature-master` orbit overlay + report under `validation_output/literature_crosscheck_full/`. Pipeline↔literature unique El-Badry stars on disk currently **4** (<10 acceptance); report marks PARTIAL until more cohort diagnostics exist. LAMOST/RAVE compared where summaries have rows.
+
+```bash
+cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
+python -m validation.compare_literature_rvs \
+  --master calibration/literature_rv_master.csv \
+  --diagnostics-glob \
+    '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/validation_output/template_fft_baseline/pipeline_blaze_split/*_diagnostics.csv' \
+  --summaries-glob \
+    '/Users/rfoley/darkhunter/rvs/dark-hunter_rv/output/Gaia_DR3_*_summary.txt' \
+  --report-dir validation_output/literature_crosscheck_full \
+  --copy-key-table calibration/literature_crosscheck_full/per_star_bias_rms.csv
+```
 
 ## Acceptance criteria
 
@@ -74,13 +88,14 @@ python -m validation.compare_literature_rvs \
 
 ## Tests / validation
 
-- [x] Unit test: nearest BJD join logic (`tests/validation/test_compare_literature_rvs.py`)
-- Compare Gaia NS1 literature vs pipeline epoch table
+- [x] Unit test: nearest BJD join logic + LAMOST/RAVE summary load (`tests/validation/test_compare_literature_rvs.py`)
+- [x] Compare Gaia NS1 literature vs pipeline epoch table (report artifacts)
+- [x] Unit test: `--literature-master` overlay (`tests/test_fit_apf_rv_keplerian.py`)
 
 ## Propagation checklist (on merge)
 
-- [ ] Master todo `external-rv-crosscheck` → completed
-- [ ] Update master plan literature section with CLI path
+- [ ] Master todo `external-rv-crosscheck` → completed (orchestrator/INDEX owned elsewhere; mark on merge)
+- [x] Playbook + step doc CLI path for full report
 
 ## Open decisions
 
