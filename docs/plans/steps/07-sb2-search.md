@@ -49,8 +49,9 @@ Detect and report double-lined systems where appropriate; optional two-lined orb
   - `python -m validation.sb2_search` writes `sb2_epochs.csv` (`sb2_candidate`, `rv1_kms`, `rv2_kms`, `delta_chi2`, ...) and `sb2_report.json`.
   - Pipeline `*_diagnostics.csv` also carries `sb2_candidate` / primary–secondary RV columns when mask CCF runs.
 - [x] Validation report: fraction flagged vs Gaia NSS SB2
-  - `python -m validation.sb2_nss_cohort_report` + stub/cached `--nss-ids-csv`; playbook recipe updated.
-  - Real NSS dump still needed for science fractions (stub IDs for CLI/tests only).
+  - `validation.fetch_nss_source_ids` + `validation.sb2_nss_cohort_report`
+  - Cached cohort dump: `calibration/nss_two_body_source_ids.csv` (147/155 `output/` stars in NSS two-body, 2026-08)
+  - Flag rates need diagnostics with `sb2_candidate` (post-#103 refit); pre-fuse `output/` → 0 flagged
 
 ### 07c (`step/07c-sb2-orbit-optional`, defer if needed)
 

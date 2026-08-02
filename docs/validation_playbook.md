@@ -114,14 +114,15 @@ Mask-CCF bi-Gaussian / primary-seeded secondary gate, optional two-template sepa
 
 ```bash
 cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
+# 1) Fetch NSS two-body matches for the diagnostics cohort (needs astroquery + network)
+PYTHONPATH=. python -m validation.fetch_nss_source_ids \
+  --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' \
+  --out-csv calibration/nss_two_body_source_ids.csv
+# 2) Fraction table vs sb2_candidate (requires pipeline fuse from #103+)
 PYTHONPATH=. python -m validation.sb2_nss_cohort_report \
   --diagnostics-glob 'output/Gaia_DR3_*_diagnostics.csv' \
-  --nss-ids-csv calibration/nss_sb2_source_ids_stub.csv \
+  --nss-ids-csv calibration/nss_two_body_source_ids.csv \
   --out-dir validation_output/sb2_nss_cohort
 ```
 
-Replace the stub CSV with a dump of NSS two-body / SB2 ``source_id`` values for real
-``frac_flagged_among_nss`` / ``frac_flagged_among_non_nss``. Outputs:
-``exposure_sb2_flags.csv``, ``per_star.csv``, ``fraction_table.csv``.
-
-Requires pipeline fuse so diagnostics carry ``sb2_candidate``.
+Stub IDs: `calibration/nss_sb2_source_ids_stub.csv` (tests only). Production: use fetched `nss_two_body_source_ids.csv` (2026-08: 147/155 `output/` stars in NSS two-body). Re-run cohort after refit so diagnostics carry `sb2_candidate`.
