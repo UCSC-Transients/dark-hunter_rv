@@ -2181,9 +2181,9 @@ def main(argv: list[str] | None = None) -> None:
         type=Path,
         default=None,
         help=(
-            "Optional epoch_ccf_abs_fill.csv from validation.epoch_ccf_matrix; "
-            "attaches abs-anchored fill for this spectrum's epoch so cascade can "
-            "adopt epoch_ccf_abs_fill after strong_lines"
+            "Optional epoch_ccf_abs_fill.csv from validation.epoch_ccf_matrix "
+            "(default engine=mask); attaches abs-anchored fill for this spectrum's epoch "
+            "so cascade can adopt epoch_ccf_abs_fill after strong_lines"
         ),
     )
     parser.add_argument(

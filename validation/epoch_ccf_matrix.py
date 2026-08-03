@@ -2,6 +2,10 @@
 """
 Build epoch–epoch CCF relative-RV matrix for one Gaia ID (step 11b/c).
 
+Default pair engine is spectrum-as-mask (``engine=mask``): same production mask
+CCF kernel, chunking, blaze continuum, bias, and QC as the stellar-mask lane.
+Legacy log-λ FFT remains available via ``--engine fft``.
+
 Example::
 
   cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
@@ -38,7 +42,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from darkhunter_rv import continuum, io_utils
+from darkhunter_rv import config, continuum, io_utils, qc
+from darkhunter_rv.blaze import BlazeCalibration
 from darkhunter_rv.epoch_ccf import (
     EpochPairCcfResult,
     abs_rel_delta_discordant,
@@ -47,6 +52,12 @@ from darkhunter_rv.epoch_ccf import (
     epoch_pair_ccf,
     inflate_sigma_ij,
 )
+from darkhunter_rv.epoch_mask_ccf import (
+    DEFAULT_AUTO_SMOOTH_SIGMA,
+    compute_mask_pair_matrix,
+    prepare_epoch_chunks,
+)
+from darkhunter_rv.instruments import get_instrument_profile
 
 logger = logging.getLogger(__name__)
 
@@ -277,6 +288,14 @@ def run_matrix(
     abs_method: str = "mask_ccf",
     sigma_ij_scale: float = 1.0,
     discord_n_sigma: float = 3.0,
+    engine: str = "mask",
+    instrument_name: str = "APF",
+    continuum_mode: str | None = None,
+    blaze_calibration: Path | None = None,
+    qc_config: Path | None = None,
+    auto_smooth_sigma: float = DEFAULT_AUTO_SMOOTH_SIGMA,
+    max_chunk_err_kms: float = 50.0,
+    no_bias: bool = False,
 ) -> dict:
     """
     Build and persist epoch CCF matrix (+ optional abs fill) for one star.
@@ -285,8 +304,9 @@ def run_matrix(
     ``epoch_ccf_abs_fill.csv``, ``epoch_ccf_vs_abs_delta.csv`` (with discordant
     flags when abs anchors exist), and ``epoch_ccf_meta.json``.
 
-    ``sigma_ij_scale`` multiplies off-diagonal formal ``sigma_ij`` (short-pair
-    inflation from step 05a; default 1.0 = no change).
+    ``engine`` is ``mask`` (default; spectrum-as-mask production CCF) or ``fft``
+    (legacy log-λ stitch). ``sigma_ij_scale`` multiplies off-diagonal formal
+    ``sigma_ij`` (short-pair inflation from step 05a; default 1.0 = no change).
     ``discord_n_sigma`` thresholds abs−abs vs CCF ΔRV inconsistency flags.
     """
     epochs = discover_epoch_spectra(data_root, gaia_id)
@@ -297,21 +317,79 @@ def run_matrix(
 
     epoch_indices = [e for e, _ in epochs]
     paths = [p for _, p in epochs]
-    waves: list[np.ndarray] = []
-    fluxes: list[np.ndarray] = []
-    for path in paths:
-        w, f = spectrum_to_normalized_1d(path, wave_min=wave_min, wave_max=wave_max)
-        if len(w) < 256:
-            raise RuntimeError(f"Too few pixels after normalize/cut: {path}")
-        waves.append(w)
-        fluxes.append(f)
+    engine_norm = str(engine).strip().lower()
+    mask_meta: dict = {}
+    if engine_norm == "mask":
+        instrument = get_instrument_profile(instrument_name)
+        bias: dict = {}
+        if not no_bias and instrument.bias_file:
+            bias = io_utils.read_bias(instrument.bias_file)
+            logger.info("Loaded bias table with %d keys from %s", len(bias), instrument.bias_file)
+        mode = str(continuum_mode) if continuum_mode is not None else str(config.MASK_CONTINUUM_MODE)
+        blaze_path = (
+            Path(blaze_calibration)
+            if blaze_calibration is not None
+            else Path(config.BLAZE_CALIBRATION_FILE)
+        )
+        blaze_cal: BlazeCalibration | None = None
+        if mode in ("sinc_blaze", "sinc_blaze_only") and blaze_path.is_file():
+            blaze_cal = BlazeCalibration.load(blaze_path)
+            logger.info("Loaded blaze calibration from %s (continuum_mode=%s)", blaze_path, mode)
+        elif mode in ("sinc_blaze", "sinc_blaze_only"):
+            logger.warning(
+                "Blaze file missing (%s); continuum will fall back to spline per order", blaze_path
+            )
+        qc_path = Path(qc_config) if qc_config is not None else Path("order_chunk_qc.yaml")
+        qc_thresholds = qc.load_qc_config(qc_path, instrument.name)
+        prepared = [
+            prepare_epoch_chunks(
+                path,
+                instrument_name=instrument_name,
+                continuum_mode=mode,
+                blaze_cal=blaze_cal,
+            )
+            for path in paths
+        ]
+        for path, chunks in zip(paths, prepared):
+            if len(chunks) < 1:
+                raise RuntimeError(f"No continuum chunks prepared for {path}")
+        pairs, long_rows, _detailed = compute_mask_pair_matrix(
+            prepared,
+            epoch_indices,
+            bias=bias,
+            auto_smooth_sigma=float(auto_smooth_sigma),
+            max_chunk_err_kms=float(max_chunk_err_kms),
+            qc_thresholds=qc_thresholds,
+        )
+        mask_meta = {
+            "engine": "mask",
+            "continuum_mode": mode,
+            "chunk_layout": str(config.DEFAULT_CHUNK_LAYOUT) if config.DEFAULT_CHUNK_LAYOUT else None,
+            "blaze_calibration": str(blaze_path) if blaze_cal is not None else None,
+            "qc_config": str(qc_path),
+            "auto_smooth_sigma": float(auto_smooth_sigma),
+            "no_bias": bool(no_bias),
+            "line_count_metric": "spectrum_mask_feature_count(min_depth=0.05, min_sep_pix=5)",
+        }
+    elif engine_norm == "fft":
+        waves: list[np.ndarray] = []
+        fluxes: list[np.ndarray] = []
+        for path in paths:
+            w, f = spectrum_to_normalized_1d(path, wave_min=wave_min, wave_max=wave_max)
+            if len(w) < 256:
+                raise RuntimeError(f"Too few pixels after normalize/cut: {path}")
+            waves.append(w)
+            fluxes.append(f)
 
-    pairs, long_rows = compute_pair_matrix(
-        waves,
-        fluxes,
-        rv_search_half_width_kms=rv_search_half_width_kms,
-        max_grid_points=max_grid_points,
-    )
+        pairs, long_rows = compute_pair_matrix(
+            waves,
+            fluxes,
+            rv_search_half_width_kms=rv_search_half_width_kms,
+            max_grid_points=max_grid_points,
+        )
+        mask_meta = {"engine": "fft"}
+    else:
+        raise ValueError(f"Unknown engine={engine!r}; use 'mask' or 'fft'")
     # Matrix assembly uses off-diagonal upper triangle only
     off_diag = {k: v for k, v in pairs.items() if k[0] != k[1]}
     dv, sig = build_relative_matrix_from_pairs(len(epochs), off_diag)
@@ -482,8 +560,10 @@ def run_matrix(
         "sigma_ij_scale": float(max(1.0, float(sigma_ij_scale))),
         "note": (
             "Cascade may adopt epoch_ccf_abs_fill after strong_lines when abs-anchored; "
-            "always flag abs vs relative ΔRV discord (systematics test)."
+            "always flag abs vs relative ΔRV discord (systematics test). "
+            "Default engine=mask (spectrum-as-mask); --engine fft for legacy log-λ FFT."
         ),
+        **mask_meta,
     }
     meta_path = out_dir / "epoch_ccf_meta.json"
     meta_path.write_text(json.dumps(meta, indent=2) + "\n")
@@ -741,6 +821,47 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Flag abs vs relative ΔRV when |residual| > N * σ_combined (default 3)",
     )
     p.add_argument(
+        "--engine",
+        choices=("mask", "fft"),
+        default="mask",
+        help="Pair engine: mask (spectrum-as-mask, default) or fft (legacy log-λ)",
+    )
+    p.add_argument("--instrument", default="APF")
+    p.add_argument(
+        "--continuum-mode",
+        default=None,
+        help=f"Mask engine continuum (default: {config.MASK_CONTINUUM_MODE})",
+    )
+    p.add_argument(
+        "--blaze-calibration",
+        type=Path,
+        default=None,
+        help=f"Blaze JSON for mask engine (default: {config.BLAZE_CALIBRATION_FILE})",
+    )
+    p.add_argument(
+        "--qc-config",
+        type=Path,
+        default=None,
+        help="QC YAML for mask engine (default: order_chunk_qc.yaml)",
+    )
+    p.add_argument(
+        "--auto-smooth-sigma",
+        type=float,
+        default=DEFAULT_AUTO_SMOOTH_SIGMA,
+        help="Mask engine: Gaussian σ (pixels) for auto-corr mask smoothing",
+    )
+    p.add_argument(
+        "--max-chunk-err",
+        type=float,
+        default=50.0,
+        help="Mask engine: hard per-chunk err ceiling (km/s)",
+    )
+    p.add_argument(
+        "--no-bias",
+        action="store_true",
+        help="Mask engine: skip chunk bias table",
+    )
+    p.add_argument(
         "--enrich-diagnostics-glob",
         default=None,
         help=(
@@ -780,6 +901,14 @@ def main(argv: list[str] | None = None) -> int:
         abs_method=str(args.abs_method),
         sigma_ij_scale=float(args.sigma_ij_scale),
         discord_n_sigma=float(args.discord_n_sigma),
+        engine=str(args.engine),
+        instrument_name=str(args.instrument),
+        continuum_mode=args.continuum_mode,
+        blaze_calibration=args.blaze_calibration,
+        qc_config=args.qc_config,
+        auto_smooth_sigma=float(args.auto_smooth_sigma),
+        max_chunk_err_kms=float(args.max_chunk_err),
+        no_bias=bool(args.no_bias),
     )
     enrich_paths: list[str] = []
     if args.enrich_diagnostics_glob:
@@ -798,9 +927,10 @@ def main(argv: list[str] | None = None) -> int:
         meta["enriched_diagnostics"] = enrich_paths
         logger.info("Enriched %d diagnostics -> %s", len(written), args.enrich_out_dir)
 
-    payload = {k: meta[k] for k in (
+    payload_keys = (
         "gaia_id",
         "n_epochs",
+        "engine",
         "pairs_csv",
         "npz_path",
         "fill_csv",
@@ -809,7 +939,9 @@ def main(argv: list[str] | None = None) -> int:
         "diag_abs_max_kms",
         "n_abs_delta_comparisons",
         "abs_delta_residual_rms_kms",
-    )}
+        "n_abs_rel_discordant",
+    )
+    payload = {k: meta[k] for k in payload_keys if k in meta}
     if enrich_paths:
         payload["enriched_diagnostics_n"] = len(enrich_paths)
         payload["enriched_diagnostics_dir"] = str(args.enrich_out_dir)

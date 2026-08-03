@@ -115,7 +115,9 @@ def test_run_matrix_writes_artifacts(tmp_path: Path):
         abs_diagnostics_glob=str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
         rv_search_half_width_kms=200.0,
         max_grid_points=4096,
+        engine="fft",
     )
+    assert meta.get("engine") == "fft"
     assert (out / "epoch_ccf_pairs.csv").is_file()
     assert (out / "epoch_ccf_matrix.npz").is_file()
     assert (out / "epoch_ccf_abs_fill.csv").is_file()
@@ -175,6 +177,8 @@ def test_cli_main_synthetic(tmp_path: Path):
             str(tmp_path),
             "--out-dir",
             str(out),
+            "--engine",
+            "fft",
             "--rv-search-half-width-kms",
             "200",
             "--max-grid-points",
@@ -186,8 +190,15 @@ def test_cli_main_synthetic(tmp_path: Path):
     assert rc == 0
     meta = json.loads((out / "epoch_ccf_meta.json").read_text())
     assert meta["n_epochs"] == 2
+    assert meta["engine"] == "fft"
     assert meta["float_zeropoint"] is True
     assert meta["n_abs_anchors"] == 0
+
+
+def test_cli_default_engine_is_mask():
+    from validation.epoch_ccf_matrix import build_arg_parser
+
+    assert build_arg_parser().get_default("engine") == "mask"
 
 
 def test_enrich_diagnostics_attach_columns_and_method_rows(tmp_path: Path):
@@ -301,6 +312,8 @@ def test_cli_enrich_opt_in(tmp_path: Path):
             str(out),
             "--abs-diagnostics-glob",
             str(tmp_path / f"Gaia_DR3_{gid}_epoch_*_diagnostics.csv"),
+            "--engine",
+            "fft",
             "--rv-search-half-width-kms",
             "200",
             "--max-grid-points",
