@@ -1,9 +1,8 @@
 """Epoch–epoch CCF relative RVs and WLS absolute fill.
 
-Pair API measures ``Δv_ij = v_i - v_j`` via log-λ FFT cross-correlation of two
-continuum-normalized spectra. The WLS combiner folds pairwise relatives with a
-sparse absolute-RV vector: when ≥1 anchor exists, missing epochs get absolute
-fills; with zero anchors, ``v_0`` is fixed at 0 and only relatives are reported.
+Production pair RVs for the matrix CLI default to spectrum-as-mask
+(``darkhunter_rv.epoch_mask_ccf``). This module still provides the legacy
+log-λ FFT ``epoch_pair_ccf``, plus WLS abs/rel combination used by both engines.
 """
 from __future__ import annotations
 

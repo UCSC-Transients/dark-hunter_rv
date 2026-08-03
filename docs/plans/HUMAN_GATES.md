@@ -16,7 +16,7 @@ Program code lanes for mask / template / strong / fusion / epoch-CCF / SB2 tooli
 
 Cascade: `mask_ccf → template_fft → strong_lines → epoch_ccf_abs_fill` (abs-anchored only).
 
-Always run for multi-epoch stars:
+Always run for multi-epoch stars (default **spectrum-as-mask** pair engine):
 
 ```bash
 cd /Users/rfoley/darkhunter/rvs/dark-hunter_rv
@@ -26,6 +26,8 @@ PYTHONPATH=. python -m validation.run_epoch_ccf_multi_epoch \
   --abs-diagnostics-root output \
   --enrich-diagnostics-root output
 ```
+
+Default pair engine is spectrum-as-mask (`--engine mask`). Use `--engine fft` only for legacy log-λ comparisons. Per-pair CCF PDF pages: `python -m validation.epoch_mask_ccf_matrix ...`.
 
 Discord flags land in `epoch_ccf_vs_abs_delta.csv` (`epoch_ccf_abs_rel_discordant`); flag only — no auto-override of cascade.
 

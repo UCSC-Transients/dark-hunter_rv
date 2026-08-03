@@ -77,6 +77,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--gaia-id", action="append", default=None, help="Limit to these IDs (repeatable)")
     p.add_argument("--discord-n-sigma", type=float, default=3.0)
     p.add_argument("--abs-method", default="mask_ccf")
+    p.add_argument(
+        "--engine",
+        choices=("mask", "fft"),
+        default="mask",
+        help="Pair engine (default mask = spectrum-as-mask production CCF)",
+    )
     p.add_argument("--log-level", default="INFO")
     return p
 
@@ -95,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.max_stars is not None and int(args.max_stars) > 0:
         ids = ids[: int(args.max_stars)]
 
-    logger.info("Running epoch CCF for %d multi-epoch star(s)", len(ids))
+    logger.info("Running epoch CCF (engine=%s) for %d multi-epoch star(s)", args.engine, len(ids))
     n_ok = 0
     n_fail = 0
     for gid in ids:
@@ -111,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
                 abs_diagnostics_glob=abs_glob,
                 abs_method=str(args.abs_method),
                 discord_n_sigma=float(args.discord_n_sigma),
+                engine=str(args.engine),
             )
             fill_csv = meta.get("fill_csv")
             if args.enrich_diagnostics_root is not None and fill_csv:
