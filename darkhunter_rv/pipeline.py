@@ -2221,19 +2221,14 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument(
-        "--epoch-ccf-fill-csv",
-        type=Path,
-        default=None,
-        help=(
-            "Optional epoch_ccf_abs_fill.csv from validation.epoch_ccf_matrix "
-            "(default engine=mask); attaches abs-anchored fill for this spectrum's epoch "
-            "so cascade can adopt epoch_ccf_abs_fill after strong_lines"
-        ),
-    )
-    parser.add_argument(
         "--update",
         action="store_true",
         help="Skip spectra whose output diagnostics CSV exists and is newer than the input (for cron).",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="With --update: reprocess even when outputs look up to date.",
     )
     parser.add_argument(
         "--joker-fit",
