@@ -20,17 +20,29 @@ website_sync_one_star() {
   run_cmd cp "$summ" "$star_root/${gid}_summary.txt"
 
   local fit_png="$REPORTS_DIR/${gid}_keplerian_fit.png"
-  local fit_json="$REPORTS_DIR/${gid}_keplerian_fit.json"
+  local fit_json="$REPORTS_DIR/${gid}_joker_fit.json"
+  local chi2_json="$REPORTS_DIR/${gid}_keplerian_fit.json"
+  if [[ ! -f "$fit_json" && -f "$chi2_json" ]]; then
+    fit_json="$chi2_json"
+  fi
   if [[ -f "$fit_png" ]]; then
     run_cmd cp "$fit_png" "$star_fit/${gid}_keplerian_fit.png"
   elif [[ "${DRY_RUN:-0}" != "1" && -n "${MISSING_ASSETS_CSV:-}" ]]; then
     echo "${gid},missing_fit_png,${fit_png}" >> "$MISSING_ASSETS_CSV"
   fi
   if [[ -f "$fit_json" ]]; then
-    run_cmd cp "$fit_json" "$star_fit/${gid}_keplerian_fit.json"
+    local dest_json
+    dest_json="$(basename "$fit_json")"
+    run_cmd cp "$fit_json" "$star_fit/$dest_json"
   elif [[ "${DRY_RUN:-0}" != "1" && -n "${MISSING_ASSETS_CSV:-}" ]]; then
     echo "${gid},missing_fit_json,${fit_json}" >> "$MISSING_ASSETS_CSV"
   fi
+  local chain
+  for chain in "$REPORTS_DIR/${gid}_joker_"*.hdf5; do
+    if [[ -f "$chain" ]]; then
+      run_cmd cp "$chain" "$star_fit/$(basename "$chain")"
+    fi
+  done
 
   local src_plot_dir="$OUT/Gaia_DR3_${gid}"
   if [[ -d "$src_plot_dir" ]]; then
@@ -58,6 +70,10 @@ website_sync_one_star() {
       run_cmd rsync -rlptD --omit-dir-times \
         "$WEBSITE_STARS_DIR/Gaia_DR3_${gid}/" \
         "$WEB_ROOT/stars/Gaia_DR3_${gid}/"
+    fi
+    if [[ -f "$REPORTS_DIR/${gid}_joker_fit.json" ]]; then
+      run_cmd mkdir -p "$WEB_ROOT/rv_fit_reports"
+      run_cmd cp "$REPORTS_DIR/${gid}_joker_fit.json" "$WEB_ROOT/rv_fit_reports/"
     fi
     if [[ -f "$REPORTS_DIR/${gid}_keplerian_fit.json" ]]; then
       run_cmd mkdir -p "$WEB_ROOT/rv_fit_reports"

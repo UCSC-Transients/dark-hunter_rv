@@ -21,9 +21,10 @@ CHUNK_LAYOUT="${CHUNK_LAYOUT:-$REPO/calibration/chunk_layouts/subchunks_8.yaml}"
 PIPELINE_FORCE="${PIPELINE_FORCE:-0}"
 MASK_PRIMARY="${MASK_PRIMARY:-1}"
 REPORTS_DIR="${REPORTS_DIR:-$REPO/rv_fit_reports}"
-MIN_POINTS="${MIN_POINTS:-5}"
+MIN_POINTS="${MIN_POINTS:-4}"
 FIT_FORCE="${FIT_FORCE:-1}"
 FIT_JITTER="${FIT_JITTER:-1}"
+RV_FITTER="${RV_FITTER:-joker}"
 PIPELINE_UPDATE="${PIPELINE_UPDATE:-0}"
 RUN_HBETA="${RUN_HBETA:-1}"
 RUN_RV_PLOTS="${RUN_RV_PLOTS:-1}"
@@ -131,15 +132,30 @@ echo "=== APF observability window (single star) ==="
 if [[ "$n_spec" -lt 2 && "$SKIP_SINGLE_EPOCH_FIT" == "1" ]]; then
   echo "[INFO] single epoch (n_spec=${n_spec}) — skip Keplerian RV fit"
 else
-  fit_args=(
-    fit_apf_rv_keplerian.py
-    --summary "$summ"
-    --output-dir "$OUT"
-    --reports-dir "$REPORTS_DIR"
-    --use-gaia-nss
-    --min-points "$MIN_POINTS"
-    --data-csv "$DATA_CSV"
-  )
+  if [[ "${RV_FITTER}" == "rvchi2" ]]; then
+    fit_args=(
+      fit_apf_rv_keplerian.py
+      --summary "$summ"
+      --output-dir "$OUT"
+      --reports-dir "$REPORTS_DIR"
+      --use-gaia-nss
+      --min-points "$MIN_POINTS"
+      --data-csv "$DATA_CSV"
+    )
+    if [[ "$FIT_JITTER" == "1" ]]; then
+      fit_args+=(--fit-jitter)
+    fi
+  else
+    fit_args=(
+      fit_joker_rv.py
+      --summary "$summ"
+      --output-dir "$OUT"
+      --reports-dir "$REPORTS_DIR"
+      --use-gaia-nss
+      --min-points "$MIN_POINTS"
+      --data-csv "$DATA_CSV"
+    )
+  fi
   if [[ "$FIT_FORCE" == "1" ]]; then
     fit_args+=(--force)
   fi

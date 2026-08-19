@@ -13,7 +13,8 @@ website_stage_gaia_plots() {
   for name in \
     "Gaia_DR3_${gid}_28_hbeta.png" \
     "Gaia_DR3_${gid}_rv_plot.png" \
-    "Gaia_DR3_${gid}_keplerian_residuals.png"
+    "Gaia_DR3_${gid}_keplerian_residuals.png" \
+    "Gaia_DR3_${gid}_joker_corner.png"
   do
     local src="$src_dir/$name"
     if [[ ! -f "$src" && "$name" == "Gaia_DR3_${gid}_keplerian_residuals.png" && -n "$reports_dir" ]]; then

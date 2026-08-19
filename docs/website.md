@@ -21,6 +21,8 @@ The public explorer lives in a **subdirectory** of the Apache base path so `/var
           <id>_summary.txt
           Plots/*.png
           RV_Fit/<id>_keplerian_fit.png
+          RV_Fit/<id>_joker_fit.json
+          RV_Fit/<id>_joker_*.hdf5
     output/                 # mirror of pipeline output (rsync)
     rv_fit_reports/         # fit JSON/PNG archive (rsync)
 ```
@@ -210,7 +212,7 @@ PYTHONPATH=. python3 scripts/build_hbeta_website_plots.py \
 `scripts/cron_update_rv_website.sh` runs:
 
 1. **Pipeline** `--update` on `SPEC_ROOT` for full-epoch `Gaia_DR3_*_epoch_<N>.txt` (not `*_order_*` Hβ extracts), `*_ap1.{flm,txt}`, and `*.fits` (skips spectra whose `*_diagnostics.csv` is newer than the input).
-2. **Populate**: Keplerian fits (≥`MIN_POINTS`, literature included, bad RVs filtered), RV/Hβ plots, `data.csv` mass columns, staging to `WEB_ROOT`. Skips refit when the JSON is newer than the summary (`FIT_FORCE=0`).
+2. **Populate**: The Joker RV fits (≥`MIN_POINTS`, default 4; literature included), RV/Hβ plots, `data.csv` mass columns (M2 Gaia; M2 sini RV-only; M2 at i RV-only+i; M2 RV+astrometry full+i), staging to `WEB_ROOT`. Skips refit when the Joker JSON is newer than the summary and `n_rv` is unchanged (`FIT_FORCE=0`). Chi2 fitter: `RV_FITTER=rvchi2`. See [joker_rv.md](joker_rv.md).
 
 **Missing epochs in summaries:** Cron used to match only `*_ap1.*` / `*.fits`, not `Gaia_DR3_*_epoch_*.txt`. Stars with only epoch `.txt` reductions (e.g. nine epochs on disk but four in `[PIPELINE RESULTS]`) need a one-time **`bash scripts/full_website_refresh.sh`** (`RUN_PIPELINE=1`, default), which runs the pipeline on all epoch files then refits. Incremental cron picks up new epoch `.txt` files after that.
 
@@ -231,7 +233,7 @@ Install crontab: run **`crontab -e`** alone (do not put the schedule on the same
 REPO=/data2/darkhunter/dark-hunter_rv
 WEB_ROOT=/var/www/html/darkhunter/rv
 SPEC_ROOT=/data2/gaia_stars/apf_reductions
-MIN_POINTS=5
+MIN_POINTS=4
 
 # 10:00 daily — use absolute path to the script (no >> $REPO/... on the job line)
 0 10 * * * /bin/bash /data2/darkhunter/dark-hunter_rv/scripts/cron_update_rv_website.sh
@@ -246,7 +248,7 @@ cd /data2/darkhunter/dark-hunter_rv
 REPO=/data2/darkhunter/dark-hunter_rv \
 WEB_ROOT=/var/www/html/darkhunter/rv \
 SPEC_ROOT=/data2/gaia_stars/apf_reductions \
-MIN_POINTS=5 \
+MIN_POINTS=4 \
 bash scripts/cron_update_rv_website.sh
 ```
 

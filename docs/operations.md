@@ -168,6 +168,32 @@ python -m darkhunter_rv.pipeline /path/to/*.txt --instrument APF --update --log-
 
 Use `--force` to ignore mtime skip. Logs should record skipped vs processed files.
 
+Optional `--joker-fit` runs The Joker on written summaries (off by default; cron uses `populate_website.sh` instead). See [joker_rv.md](joker_rv.md).
+
+Ziggy screen (n≥4, all variants):
+
+```bash
+screen -dmS darkhunter_joker_n4 bash -lc '
+  REPO=/data2/darkhunter/dark-hunter_rv
+  cd "$REPO" && git pull
+  PY="$REPO/.venv/bin/python"
+  $PY fit_joker_rv.py --all --use-gaia-nss --min-points 4 --variants rv_only,period,ecc,full \
+    --output-dir output --reports-dir rv_fit_reports --data-csv /var/www/html/darkhunter/rv/tables/data.csv
+'
+```
+
+Sparse full priors (2–3 RVs):
+
+```bash
+screen -dmS darkhunter_joker_sparse_full bash -lc '
+  REPO=/data2/darkhunter/dark-hunter_rv
+  cd "$REPO" && git pull
+  PY="$REPO/.venv/bin/python"
+  $PY fit_joker_rv.py --all --use-gaia-nss --min-points 2 --max-points 3 --variants full \
+    --output-dir output --reports-dir rv_fit_reports --data-csv /var/www/html/darkhunter/rv/tables/data.csv
+'
+```
+
 ## Legacy single-method mode
 
 ```bash

@@ -21,7 +21,7 @@ PY="${PY:-/home/marley/anaconda2/envs/gaia-env/bin/python}"
 if [[ ! -x "$PY" ]]; then
   PY="${PY_FALLBACK:-python3}"
 fi
-MIN_POINTS="${MIN_POINTS:-5}"
+MIN_POINTS="${MIN_POINTS:-4}"
 LOG="${LOG:-$REPO/logs/cron_rv_website.log}"
 RUN_PIPELINE="${RUN_PIPELINE:-1}"
 

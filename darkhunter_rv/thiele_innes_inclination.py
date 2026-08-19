@@ -36,6 +36,20 @@ class ThieleInnesElements:
         return any(np.isfinite(e) and e > 0 for e in errs)
 
 
+@dataclass(frozen=True)
+class CampbellElements:
+    """Astrometric Campbell elements from Thiele-Innes (Halbwachs App. A)."""
+
+    a_mas: float
+    i_deg: float
+    omega_deg: float
+    Omega_deg: float
+    a_mas_err: float = np.nan
+    i_deg_err: float = np.nan
+    omega_deg_err: float = np.nan
+    Omega_deg_err: float = np.nan
+
+
 def _meta_float(meta: Mapping[str, Any], *keys: str) -> Optional[float]:
     for key in keys:
         if key not in meta:
@@ -85,9 +99,23 @@ def thiele_innes_from_metadata(meta: Mapping[str, Any]) -> Optional[ThieleInnesE
     )
 
 
-def inclination_rad_from_thiele_innes(A: float, B: float, F: float, G: float) -> Optional[float]:
+def _wrap_deg_0_360(deg: float) -> float:
+    return float(np.mod(deg, 360.0))
+
+
+def _circular_std_deg(values: np.ndarray) -> float:
+    ang = np.deg2rad(np.asarray(values, dtype=float))
+    c = float(np.mean(np.cos(ang)))
+    s = float(np.mean(np.sin(ang)))
+    r = float(np.hypot(c, s))
+    if r <= 1e-15:
+        return 180.0
+    return float(np.rad2deg(np.sqrt(max(0.0, -2.0 * np.log(min(1.0, r))))))
+
+
+def invert_thiele_innes(A: float, B: float, F: float, G: float) -> Optional[tuple[float, float, float, float]]:
     """
-    Orbital inclination (rad) from Thiele-Innes elements.
+    Invert Thiele-Innes A,B,F,G to (a_mas, i_rad, omega_rad, Omega_rad).
 
     Uses the Binnendijk/Halbwachs inversion (same arccos branch as ``rv_fits.astrometric_orbit``).
     """
@@ -123,7 +151,15 @@ def inclination_rad_from_thiele_innes(A: float, B: float, F: float, G: float) ->
     i_rad = float(np.arccos(arg))
     if not np.isfinite(i_rad) or i_rad <= 0 or i_rad >= np.pi:
         return None
-    return i_rad
+    return float(a0), i_rad, float(omega), float(Omega)
+
+
+def inclination_rad_from_thiele_innes(A: float, B: float, F: float, G: float) -> Optional[float]:
+    """Orbital inclination (rad) from Thiele-Innes elements."""
+    inv = invert_thiele_innes(A, B, F, G)
+    if inv is None:
+        return None
+    return float(inv[1])
 
 
 def inclination_deg_from_thiele_innes(A: float, B: float, F: float, G: float) -> Optional[float]:
@@ -133,6 +169,15 @@ def inclination_deg_from_thiele_innes(A: float, B: float, F: float, G: float) ->
     return float(np.rad2deg(i_rad))
 
 
+def _ti_sigmas(ti: ThieleInnesElements) -> tuple[float, float, float, float]:
+    return (
+        ti.A_err if np.isfinite(ti.A_err) and ti.A_err > 0 else 0.0,
+        ti.B_err if np.isfinite(ti.B_err) and ti.B_err > 0 else 0.0,
+        ti.F_err if np.isfinite(ti.F_err) and ti.F_err > 0 else 0.0,
+        ti.G_err if np.isfinite(ti.G_err) and ti.G_err > 0 else 0.0,
+    )
+
+
 def _mc_inclination_error_deg(
     ti: ThieleInnesElements,
     i_point_deg: float,
@@ -140,28 +185,76 @@ def _mc_inclination_error_deg(
     n_samples: int,
     seed: int,
 ) -> Optional[float]:
-    sigmas = (
-        ti.A_err if np.isfinite(ti.A_err) and ti.A_err > 0 else 0.0,
-        ti.B_err if np.isfinite(ti.B_err) and ti.B_err > 0 else 0.0,
-        ti.F_err if np.isfinite(ti.F_err) and ti.F_err > 0 else 0.0,
-        ti.G_err if np.isfinite(ti.G_err) and ti.G_err > 0 else 0.0,
-    )
-    if not any(s > 0 for s in sigmas):
+    del i_point_deg
+    camp = campbell_from_thiele_innes(ti, mc_samples=n_samples, seed=seed)
+    if camp is None:
         return None
+    err = float(camp.i_deg_err)
+    if not np.isfinite(err) or err <= 0:
+        return None
+    return err
 
-    rng = np.random.default_rng(seed)
-    draws: list[float] = []
-    for _ in range(n_samples):
-        a = rng.normal(ti.A, sigmas[0] or 0.0)
-        b = rng.normal(ti.B, sigmas[1] or 0.0)
-        f = rng.normal(ti.F, sigmas[2] or 0.0)
-        g = rng.normal(ti.G, sigmas[3] or 0.0)
-        inc = inclination_deg_from_thiele_innes(a, b, f, g)
-        if inc is not None and 0.0 < inc < 180.0:
-            draws.append(inc)
-    if len(draws) < max(50, n_samples // 20):
+
+def campbell_from_thiele_innes(
+    ti: ThieleInnesElements,
+    *,
+    mc_samples: int = 512,
+    seed: int = 0,
+) -> Optional[CampbellElements]:
+    """
+    Point-estimate Campbell elements from A,B,F,G.
+
+    Uncertainties are Monte Carlo over uncorrelated Gaussian TI errors when present.
+    """
+    inv = invert_thiele_innes(ti.A, ti.B, ti.F, ti.G)
+    if inv is None:
         return None
-    return float(np.std(np.asarray(draws)))
+    a0, i_rad, omega, Omega = inv
+    i_deg = float(np.rad2deg(i_rad))
+    omega_deg = _wrap_deg_0_360(float(np.rad2deg(omega)))
+    Omega_deg = _wrap_deg_0_360(float(np.rad2deg(Omega)))
+
+    sigmas = _ti_sigmas(ti)
+    a_err = i_err = omega_err = Omega_err = np.nan
+    if any(s > 0 for s in sigmas):
+        rng = np.random.default_rng(seed)
+        a_draws: list[float] = []
+        i_draws: list[float] = []
+        om_draws: list[float] = []
+        Om_draws: list[float] = []
+        for _ in range(mc_samples):
+            a = rng.normal(ti.A, sigmas[0] or 0.0)
+            b = rng.normal(ti.B, sigmas[1] or 0.0)
+            f = rng.normal(ti.F, sigmas[2] or 0.0)
+            g = rng.normal(ti.G, sigmas[3] or 0.0)
+            d = invert_thiele_innes(a, b, f, g)
+            if d is None:
+                continue
+            aa, ii, oo, OO = d
+            i_d = float(np.rad2deg(ii))
+            if not (0.0 < i_d < 180.0):
+                continue
+            a_draws.append(float(aa))
+            i_draws.append(i_d)
+            om_draws.append(_wrap_deg_0_360(float(np.rad2deg(oo))))
+            Om_draws.append(_wrap_deg_0_360(float(np.rad2deg(OO))))
+        n_ok = len(i_draws)
+        if n_ok >= max(50, mc_samples // 20):
+            a_err = float(np.std(np.asarray(a_draws)))
+            i_err = float(np.std(np.asarray(i_draws)))
+            omega_err = _circular_std_deg(np.asarray(om_draws))
+            Omega_err = _circular_std_deg(np.asarray(Om_draws))
+
+    return CampbellElements(
+        a_mas=float(a0),
+        i_deg=i_deg,
+        omega_deg=omega_deg,
+        Omega_deg=Omega_deg,
+        a_mas_err=float(a_err),
+        i_deg_err=float(i_err),
+        omega_deg_err=float(omega_err),
+        Omega_deg_err=float(Omega_err),
+    )
 
 
 def inclination_from_thiele_innes(

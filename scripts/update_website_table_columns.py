@@ -61,6 +61,7 @@ def update_table_columns(
     m2_i = hdr.index("M2 (Msun)")
     m2sini_i = hdr.index("M2sin i (Msun)")
     m2over_i = hdr.index("(M2sin i)/(sin i) (Msun)")
+    m2_rv_i = hdr.index("M2 RV+astrometry (Msun)") if "M2 RV+astrometry (Msun)" in hdr else None
     incl_i = hdr.index(INCLINATION_COLUMN)
     apf_days_i = hdr.index("DAYS SINCE LAST APF")
     next_rv_i = hdr.index("NEXT RV EVENT (DATE)")
@@ -78,17 +79,24 @@ def update_table_columns(
 
     reports: dict[str, dict] = {}
     if reports_dir.is_dir():
-        for p in sorted(reports_dir.glob("*_keplerian_fit.json")):
-            sid = p.stem.replace("_keplerian_fit", "")
-            try:
-                reports[sid] = json.loads(p.read_text())
-            except Exception:
-                continue
+        for glob_name, strip in (
+            ("*_joker_fit.json", "_joker_fit"),
+            ("*_keplerian_fit.json", "_keplerian_fit"),
+        ):
+            for p in sorted(reports_dir.glob(glob_name)):
+                sid = p.stem.replace(strip, "")
+                if sid in reports:
+                    continue
+                try:
+                    reports[sid] = json.loads(p.read_text())
+                except Exception:
+                    continue
 
     n_apf_days = 0
     n_m2 = 0
     n_m2sini = 0
     n_m2_at_i = 0
+    n_m2_rv_ast = 0
     n_m2_at_i_eq_sin = 0
     n_incl = 0
     n_next = 0
@@ -159,6 +167,14 @@ def update_table_columns(
                     n_m2_at_i_eq_sin += 1
         else:
             r[m2over_i] = ""
+        if m2_rv_i is not None:
+            while len(r) <= m2_rv_i:
+                r.append("")
+            if masses.get("m2_rv_astrometry_msun") is not None:
+                r[m2_rv_i] = f"{masses['m2_rv_astrometry_msun']:.5f}"
+                n_m2_rv_ast += 1
+            else:
+                r[m2_rv_i] = ""
         nxt = next_rv_event_from_fit_report(rep)
         if nxt is not None:
             while len(r) <= next_rv_i:
@@ -184,6 +200,7 @@ def update_table_columns(
         "m2_filled": n_m2,
         "m2sin_i_filled": n_m2sini,
         "m2_at_i_filled": n_m2_at_i,
+        "m2_rv_astrometry_filled": n_m2_rv_ast,
         "m2_at_i_equals_m2sin_i": n_m2_at_i_eq_sin,
         "inclination_filled": n_incl,
         "next_rv_filled": n_next,

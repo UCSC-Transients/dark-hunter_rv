@@ -26,6 +26,7 @@ from .strong_lines import (
 )
 from darkhunter_rv.summary_paths import is_primary_epoch_spectrum_name
 from darkhunter_rv.sb2 import score_sb2_from_pipeline_order_ccfs, sb2_exposure_diagnostics_columns
+from fit_joker_rv import run_one_joker
 
 logger = logging.getLogger(__name__)
 
@@ -2220,14 +2221,24 @@ def main(argv: list[str] | None = None) -> None:
         ),
     )
     parser.add_argument(
+        "--epoch-ccf-fill-csv",
+        type=Path,
+        default=None,
+        help=(
+            "Optional epoch_ccf_abs_fill.csv from validation.epoch_ccf_matrix "
+            "(default engine=mask); attaches abs-anchored fill for this spectrum's epoch "
+            "so cascade can adopt epoch_ccf_abs_fill after strong_lines"
+        ),
+    )
+    parser.add_argument(
         "--update",
         action="store_true",
         help="Skip spectra whose output diagnostics CSV exists and is newer than the input (for cron).",
     )
     parser.add_argument(
-        "--force",
+        "--joker-fit",
         action="store_true",
-        help="With --update: reprocess even when outputs look up to date.",
+        help="After summaries, run The Joker RV fits for processed Gaia IDs (off by default).",
     )
     parser.add_argument(
         "--no-fixed-exposure-template",
@@ -2371,6 +2382,34 @@ def main(argv: list[str] | None = None) -> None:
             io_utils.write_summary(unassigned_results)
         elif not results_by_gid:
             io_utils.write_summary([])
+
+    if getattr(args, "joker_fit", False) and results_by_gid:
+        reports_dir = Path("rv_fit_reports")
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        cache = reports_dir / "gaia_nss_cache.json"
+        obs = reports_dir / "observability_windows_cache.json"
+        for gid in results_by_gid:
+            summ = config.OUTPUT_DIR / f"Gaia_DR3_{gid}_summary.txt"
+            if not summ.is_file():
+                continue
+            run_one_joker(
+                summ,
+                reports_dir,
+                min_points=4,
+                max_points=None,
+                variants=["rv_only", "period", "ecc", "full"],
+                use_gaia_nss=True,
+                gaia_cache_path=cache,
+                observability_cache_path=obs,
+                query_gaia_online=False,
+                table_m1_msun=None,
+                prior_size=100_000,
+                force=False,
+                mcmc_tune=500,
+                mcmc_draws=500,
+                mcmc_chains=2,
+                plots_root=config.OUTPUT_DIR,
+            )
 
 
 if __name__ == "__main__":

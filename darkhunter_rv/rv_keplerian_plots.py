@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from fit_apf_rv_keplerian import RVPoint
 
 from darkhunter_rv.apf_observability import PLOT_HORIZON_DAYS, window_mjd_bounds
+from darkhunter_rv.joker_rv_fit import JOKER_VARIANT_LABEL, JOKER_VARIANT_ORDER
 from darkhunter_rv.rv_point_filters import rv_value_is_valid
 
 
@@ -37,6 +38,13 @@ FIT_VARIANT_LABEL = {
     "fix_period": "P fixed",
     "fix_ecc": "e fixed",
     "fix_period_ecc": "P & e fixed",
+}
+
+JOKER_VARIANT_STYLE: Dict[str, Tuple[str, str]] = {
+    "rv_only": ("tab:blue", "-"),
+    "period": ("tab:orange", "--"),
+    "ecc": ("tab:green", "-."),
+    "full": ("tab:red", ":"),
 }
 
 TEL_MARKER = {"APF": "o", "KPF": "s", "GHOST": "p", "MAROON-X": "x"}
@@ -603,4 +611,211 @@ def plot_fit_residuals(
     out_png.parent.mkdir(parents=True, exist_ok=True)
     fig.subplots_adjust(right=0.82)
     fig.savefig(out_png, dpi=180, bbox_inches="tight", pad_inches=0.08)
+    plt.close(fig)
+
+
+def _plot_joker_orbit_family(
+    ax,
+    t_dense: np.ndarray,
+    sample_params: Dict[str, List[np.ndarray]],
+    median_params: Dict[str, np.ndarray],
+    t_ref: float,
+) -> List[np.ndarray]:
+    curves: List[np.ndarray] = []
+    rv_fn = _fitmod().rv_model
+    for key in JOKER_VARIANT_ORDER:
+        color, ls = JOKER_VARIANT_STYLE[key]
+        for params in sample_params.get(key, []):
+            y_s = rv_fn(params, t_dense, t_ref)
+            curves.append(y_s)
+            ax.plot(t_dense, y_s, ls=ls, lw=0.8, color=color, alpha=0.18, zorder=2)
+        med = median_params.get(key)
+        if med is None:
+            continue
+        y_m = rv_fn(med, t_dense, t_ref)
+        curves.append(y_m)
+        ax.plot(
+            t_dense,
+            y_m,
+            ls=ls,
+            lw=2.4,
+            color=color,
+            alpha=0.95,
+            zorder=3,
+            label=JOKER_VARIANT_LABEL.get(key, key),
+        )
+    return curves
+
+
+def plot_joker_multi_fit(
+    summary_path: Path,
+    points: Sequence["RVPoint"],
+    sample_params: Dict[str, List[np.ndarray]],
+    median_params: Dict[str, np.ndarray],
+    report: dict,
+    out_png: Path,
+) -> None:
+    """Joker orbits: 10 faint samples per variant plus a thick median orbit."""
+    if len(points) < 2:
+        raise ValueError("need at least 2 points")
+    t = np.array([p.mjd for p in points], dtype=float)
+    y = np.array([p.rv for p in points], dtype=float)
+    yerr = _fitmod().effective_yerr_for_points(points, report)
+    t_ref = float(report["t_ref_mjd"])
+    t_lo, t_hi = _xlim_from_data(t, report)
+    t_dense = np.linspace(t_lo, t_hi, 2000)
+
+    fig, ax = plt.subplots(figsize=(10.8, 5.2))
+    _plot_points(ax, points, include_literature=True, yerr=yerr)
+    curves = _plot_joker_orbit_family(ax, t_dense, sample_params, median_params, t_ref)
+    y_lim = _y_limits_data_and_models(t, y, curves)
+    ax.set_ylim(*y_lim)
+    y_top_in = y_lim[1] - 0.02 * (y_lim[1] - y_lim[0])
+    _mark_time_reference(ax, report, t_lo, t_hi, y_top_in, annotate=False)
+    sid = _fitmod().parse_object_id_from_summary(summary_path) or summary_path.stem.replace("_summary", "")
+    ax.set_xlabel("MJD")
+    ax.set_ylabel("RV (km/s)")
+    ax.set_title(f"Joker Keplerian fits: Gaia DR3 {sid}")
+    ax.set_xlim(t_lo, t_hi)
+    _style_rv_axes(ax)
+    ax.legend(loc="best", fontsize=8.5)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=180, bbox_inches="tight", pad_inches=0.06)
+    plt.close(fig)
+
+
+def plot_joker_fit_residuals(
+    summary_path: Path,
+    points: Sequence["RVPoint"],
+    sample_params: Dict[str, List[np.ndarray]],
+    median_params: Dict[str, np.ndarray],
+    report: dict,
+    out_png: Path,
+) -> None:
+    """Residuals vs RV-only median orbit; annotate M2 sini / M2 at i / M2 RV+astrometry."""
+    if "rv_only" not in median_params:
+        raise ValueError("residual plot requires rv_only median orbit")
+    if len(points) < 2:
+        raise ValueError("need at least 2 points")
+    t = np.array([p.mjd for p in points], dtype=float)
+    y = np.array([p.rv for p in points], dtype=float)
+    yerr = _fitmod().effective_yerr_for_points(points, report)
+    t_ref = float(report["t_ref_mjd"])
+    t_lo, t_hi = _xlim_from_data(t, report)
+    t_dense = np.linspace(t_lo, t_hi, 2000)
+    rv_fn = _fitmod().rv_model
+    model_free = rv_fn(median_params["rv_only"], t, t_ref)
+    resid_data = y - model_free
+
+    fig = plt.figure(figsize=(10.8, 7.6))
+    gs = fig.add_gridspec(3, 1, height_ratios=[2.25, 1.05, 0.55], hspace=0.06)
+    ax_top = fig.add_subplot(gs[0])
+    ax_bot = fig.add_subplot(gs[1], sharex=ax_top)
+    ax_txt = fig.add_subplot(gs[2])
+    ax_txt.axis("off")
+    _plot_points(ax_top, points, include_literature=True, yerr=yerr)
+    curves = _plot_joker_orbit_family(ax_top, t_dense, sample_params, median_params, t_ref)
+    y_lim = _y_limits_data_and_models(t, y, curves)
+    ax_top.set_ylim(*y_lim)
+    y_top_in = y_lim[1] - 0.02 * (y_lim[1] - y_lim[0])
+    _mark_time_reference(ax_top, report, t_lo, t_hi, y_top_in, annotate=True)
+    sid = _fitmod().parse_object_id_from_summary(summary_path) or summary_path.stem.replace("_summary", "")
+    ax_top.set_ylabel("RV (km/s)")
+    ax_top.set_title(f"Joker fits + residuals: Gaia DR3 {sid}")
+    _style_rv_axes(ax_top)
+    plt.setp(ax_top.get_xticklabels(), visible=False)
+    ax_bot.axhline(0.0, color="0.4", lw=1.0, zorder=1)
+    _plot_points(ax_bot, points, include_literature=True, y_values=resid_data, yerr=yerr)
+    r_ylim = _residual_ylim(resid_data, yerr, [resid_data])
+    ax_bot.set_ylim(*r_ylim)
+    ax_bot.set_ylabel("ΔRV (km/s)")
+    ax_bot.set_xlim(t_lo, t_hi)
+    ax_bot.set_xlabel("MJD")
+    _style_rv_axes(ax_bot)
+    lines = []
+    m2s = report.get("m2sini_msun")
+    m2i = report.get("m2_at_i_msun")
+    m2a = report.get("m2_rv_astrometry_msun")
+    for key in JOKER_VARIANT_ORDER:
+        blk = (report.get("fit_variants") or {}).get(key)
+        if not isinstance(blk, dict) or blk.get("P_days") is None:
+            continue
+        p_days = int(round(float(blk["P_days"])))
+        ecc = float(blk["e"])
+        lines.append(f"{JOKER_VARIANT_LABEL[key]}:  P = {p_days} d,  e = {ecc:.3f}")
+    extra = []
+    if m2s is not None:
+        extra.append(f"M₂ sin i = {float(m2s):.4f} M☉")
+    if m2i is not None:
+        extra.append(f"M₂ at i = {float(m2i):.4f} M☉")
+    if m2a is not None:
+        extra.append(f"M₂ RV+astrometry = {float(m2a):.4f} M☉")
+    if extra:
+        lines.append("  ".join(extra))
+    ax_txt.text(
+        0.01,
+        0.95,
+        "\n".join(lines),
+        transform=ax_txt.transAxes,
+        fontsize=8.5,
+        va="top",
+        ha="left",
+        family="monospace",
+    )
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.subplots_adjust(right=0.82)
+    fig.savefig(out_png, dpi=180, bbox_inches="tight", pad_inches=0.08)
+    plt.close(fig)
+
+
+def plot_joker_corners(
+    corner_arrays: Dict[str, Dict[str, np.ndarray]],
+    out_png: Path,
+    *,
+    gaia_id: Optional[str] = None,
+) -> None:
+    """Four stacked posterior corners (RV-only on top, full NSS on bottom)."""
+    keys = [k for k in JOKER_VARIANT_ORDER if k in corner_arrays]
+    if not keys:
+        raise ValueError("no corner arrays")
+    names = ("P_days", "K_kms", "e", "omega_deg", "gamma_kms")
+    labels = ("P (d)", "K (km/s)", "e", "ω (deg)", "γ (km/s)")
+    n_var = len(keys)
+    n_par = len(names)
+    fig, axes = plt.subplots(n_var * n_par, n_par, figsize=(9.5, 2.6 * n_var))
+    if n_var == 1:
+        axes = np.array(axes)
+    for vi, variant in enumerate(keys):
+        data = corner_arrays[variant]
+        cols = [np.asarray(data[n], dtype=float) for n in names]
+        stack = np.column_stack(cols)
+        color, _ls = JOKER_VARIANT_STYLE[variant]
+        for i in range(n_par):
+            for j in range(n_par):
+                ax = axes[vi * n_par + i, j]
+                if j > i:
+                    ax.axis("off")
+                    continue
+                if i == j:
+                    ax.hist(stack[:, i], bins=24, color=color, alpha=0.75, histtype="stepfilled")
+                else:
+                    ax.plot(stack[:, j], stack[:, i], ".", ms=2.2, color=color, alpha=0.45)
+                if i == n_par - 1:
+                    ax.set_xlabel(labels[j], fontsize=7)
+                else:
+                    ax.set_xticklabels([])
+                if j == 0:
+                    ax.set_ylabel(labels[i], fontsize=7)
+                else:
+                    ax.set_yticklabels([])
+                ax.tick_params(labelsize=6)
+        axes[vi * n_par, 0].set_title(JOKER_VARIANT_LABEL.get(variant, variant), loc="left", fontsize=9)
+    title = "Joker posteriors"
+    if gaia_id:
+        title = f"{title}: Gaia DR3 {gaia_id}"
+    fig.suptitle(title, fontsize=11)
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
+    fig.savefig(out_png, dpi=140, bbox_inches="tight")
     plt.close(fig)
