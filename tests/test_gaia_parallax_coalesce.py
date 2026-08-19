@@ -128,7 +128,7 @@ def test_live_gaia_query_acceleration_parallax_for_77413727493690112():
     """Requires network; values from nss_acceleration_astro for this SB candidate."""
     data = gaia_utils.query_gaia_data(STAR)
     if data is None:
-        pytest.skip("Gaia TAP unavailable")
+        pytest.skip("ESA and ARI Gaia TAP unavailable")
     meta = data["metadata"]
     assert meta["Parallax"] == pytest.approx(ACC_PLX, rel=0, abs=1e-6)
     assert meta["Parallax_Error"] == pytest.approx(ACC_ERR, rel=0, abs=1e-6)
