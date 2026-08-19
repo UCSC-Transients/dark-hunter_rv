@@ -11,7 +11,7 @@ from astropy.time import Time
 
 MEDIA_COLUMNS = frozenset({"RV PLOT", "RV FIT", "FLUX PLOT", "SOURCE IMAGE"})
 
-MASS_COLUMNS = ("M2sin i (Msun)", "(M2sin i)/(sin i) (Msun)")
+MASS_COLUMNS = ("M2sin i (Msun)", "(M2sin i)/(sin i) (Msun)", "M2 RV+astrometry (Msun)")
 INCLINATION_COLUMN = "INCLINATION (deg)"
 MASS_BLOCK_COLUMNS = MASS_COLUMNS + (INCLINATION_COLUMN,)
 
@@ -250,6 +250,13 @@ def next_rv_event_from_fit_report(report: dict) -> Optional[float]:
             t = sooner_rv_extremum_mjd(rep, now_mjd=report.get("now_mjd"))
             if t is not None:
                 return t
+    if isinstance(variants, dict):
+        for key in ("full", "rv_only", "free"):
+            rep = variants.get(key)
+            if isinstance(rep, dict):
+                t = sooner_rv_extremum_mjd(rep, now_mjd=report.get("now_mjd"))
+                if t is not None:
+                    return t
     return sooner_rv_extremum_mjd(report, now_mjd=report.get("now_mjd"))
 
 

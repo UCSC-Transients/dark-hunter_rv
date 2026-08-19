@@ -48,7 +48,12 @@ from darkhunter_rv.summary_paths import (
     parse_object_id_from_summary,
 )
 from validation.rv_overlap_lib import bjd_to_mjd, load_literature_epochs
-from darkhunter_rv.thiele_innes_inclination import fill_inclination_in_metadata, inclination_from_row_dict
+from darkhunter_rv.thiele_innes_inclination import (
+    campbell_from_thiele_innes,
+    fill_inclination_in_metadata,
+    inclination_from_row_dict,
+    thiele_innes_from_metadata,
+)
 from scipy.optimize import least_squares, minimize_scalar
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
@@ -151,6 +156,9 @@ def _free_fit_variant_report(report: dict) -> Optional[dict]:
         free = variants.get("free")
         if isinstance(free, dict) and free.get("P_days") is not None:
             return free
+        rv_only = variants.get("rv_only")
+        if isinstance(rv_only, dict) and rv_only.get("P_days") is not None:
+            return rv_only
     if report.get("P_days") is not None and report.get("K_kms") is not None:
         return report
     return None
@@ -268,6 +276,81 @@ def _save_json_cache(path: Path, data: Dict[str, Any]) -> None:
     path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
 
+NSS_ORBIT_ADQL_FIELDS = (
+    "source_id, nss_solution_type, period, period_error, eccentricity, eccentricity_error, "
+    "inclination, arg_periastron, arg_periastron_error, t_periastron, t_periastron_error, "
+    "a_thiele_innes, a_thiele_innes_error, "
+    "b_thiele_innes, b_thiele_innes_error, "
+    "f_thiele_innes, f_thiele_innes_error, "
+    "g_thiele_innes, g_thiele_innes_error"
+)
+
+
+def _put_finite(
+    out: Dict[str, Any],
+    key: str,
+    val: Optional[float],
+    *,
+    positive: bool = False,
+) -> None:
+    if val is None or not np.isfinite(val):
+        return
+    if positive and float(val) <= 0:
+        return
+    out[key] = float(val)
+
+
+def enrich_nss_keplerian_fields(row: Any, out: Dict[str, Any]) -> None:
+    """Add catalog errors, omega, T0, and Thiele-Innes Campbell fields onto an NSS dict."""
+    _put_finite(
+        out,
+        "period_days_error",
+        _first_finite(row, ["period_error", "period_days_error"]),
+        positive=True,
+    )
+    _put_finite(
+        out,
+        "eccentricity_error",
+        _first_finite(row, ["eccentricity_error"]),
+        positive=True,
+    )
+    _put_finite(out, "omega_deg", _first_finite(row, ["arg_periastron", "omega", "omega_deg"]))
+    _put_finite(
+        out,
+        "omega_deg_error",
+        _first_finite(row, ["arg_periastron_error", "omega_error", "omega_deg_error"]),
+        positive=True,
+    )
+    _put_finite(out, "t_periastron_gaia", _first_finite(row, ["t_periastron"]))
+    _put_finite(
+        out,
+        "t_periastron_error_days",
+        _first_finite(row, ["t_periastron_error"]),
+        positive=True,
+    )
+    row_d = _gaia_table_row_as_dict(row)
+    ti = thiele_innes_from_metadata(row_d)
+    if ti is None:
+        return
+    camp = campbell_from_thiele_innes(ti, mc_samples=256, seed=0)
+    if camp is None:
+        return
+    if "omega_deg" not in out:
+        out["omega_deg"] = float(camp.omega_deg)
+        if np.isfinite(camp.omega_deg_err) and camp.omega_deg_err > 0:
+            out["omega_deg_error"] = float(camp.omega_deg_err)
+    if "inclination_deg" not in out:
+        out["inclination_deg"] = float(camp.i_deg)
+        if np.isfinite(camp.i_deg_err) and camp.i_deg_err > 0:
+            out["inclination_deg_error"] = float(camp.i_deg_err)
+    out["a_mas"] = float(camp.a_mas)
+    if np.isfinite(camp.a_mas_err) and camp.a_mas_err > 0:
+        out["a_mas_error"] = float(camp.a_mas_err)
+    out["Omega_deg"] = float(camp.Omega_deg)
+    if np.isfinite(camp.Omega_deg_err) and camp.Omega_deg_err > 0:
+        out["Omega_deg_error"] = float(camp.Omega_deg_err)
+
+
 def _first_finite(row: Any, keys: List[str]) -> Optional[float]:
     for key in keys:
         try:
@@ -325,13 +408,14 @@ def _extract_m1_from_nss_row(row: Any) -> Optional[float]:
 
 
 def _gaia_table_row_as_dict(row: Any) -> Dict[str, Any]:
-    try:
-        names = list(getattr(row, "colnames", []) or [])
-        return {str(n): row[n] for n in names}
-    except Exception:
-        pass
     if isinstance(row, dict):
         return dict(row)
+    try:
+        names = list(getattr(row, "colnames", []) or [])
+        if names:
+            return {str(n): row[n] for n in names}
+    except Exception:
+        pass
     return {}
 
 
@@ -365,11 +449,7 @@ def fetch_gaia_nss_orbit(source_id: str, cache_path: Optional[Path] = None) -> O
 
     try:
         orbit_query = f"""
-        SELECT source_id, nss_solution_type, period, eccentricity, inclination,
-               a_thiele_innes, a_thiele_innes_error,
-               b_thiele_innes, b_thiele_innes_error,
-               f_thiele_innes, f_thiele_innes_error,
-               g_thiele_innes, g_thiele_innes_error
+        SELECT {NSS_ORBIT_ADQL_FIELDS}
         FROM gaiadr3.nss_two_body_orbit
         WHERE source_id = '{source_id}'
         """
@@ -405,6 +485,7 @@ def fetch_gaia_nss_orbit(source_id: str, cache_path: Optional[Path] = None) -> O
             if p <= 0 or e < 0 or e >= 1:
                 continue
             out = {"period_days": float(p), "eccentricity": float(e)}
+            enrich_nss_keplerian_fields(row, out)
             incl_o, incl_err = _resolve_orbit_inclination_deg(row)
             if incl_o is not None and np.isfinite(incl_o):
                 out["inclination_deg"] = float(incl_o)
@@ -456,11 +537,7 @@ def prefetch_gaia_nss_bulk(source_ids: List[str], cache_path: Path, chunk_size: 
     for ids in _chunk(to_fetch, chunk_size):
         id_clause = ",".join(ids)
         orbit_q = (
-            "SELECT source_id, period, eccentricity, inclination, "
-            "a_thiele_innes, a_thiele_innes_error, "
-            "b_thiele_innes, b_thiele_innes_error, "
-            "f_thiele_innes, f_thiele_innes_error, "
-            "g_thiele_innes, g_thiele_innes_error "
+            f"SELECT {NSS_ORBIT_ADQL_FIELDS} "
             "FROM gaiadr3.nss_two_body_orbit "
             f"WHERE source_id IN ({id_clause})"
         )
@@ -490,6 +567,7 @@ def prefetch_gaia_nss_bulk(source_ids: List[str], cache_path: Path, chunk_size: 
             if not np.isfinite(p) or not np.isfinite(e) or p <= 0 or e < 0 or e >= 1:
                 continue
             entry: Dict[str, float] = {"period_days": float(p), "eccentricity": float(e)}
+            enrich_nss_keplerian_fields(row, entry)
             incl_o, incl_err = _resolve_orbit_inclination_deg(row)
             if incl_o is not None and np.isfinite(incl_o):
                 entry["inclination_deg"] = float(incl_o)
@@ -1442,6 +1520,7 @@ def website_table_masses_from_report(
     - ``m2_msun``: Gaia NSS astrometric M2 (with Gaia M1), not from the RV fit.
     - ``m2sin_i_msun``: M2 sin i from the RV-only (free) fit and assumed M1.
     - ``m2_at_i_msun``: M2 at i from the RV-only f(M), assumed M1, and astrometric i.
+    - ``m2_rv_astrometry_msun``: M2 from the full RV+NSS-prior fit, M1, and astrometric i.
     """
     incl = resolve_inclination_deg_for_rv_mass(
         report, summary_path=summary_path, gaia_cache=gaia_cache
@@ -1477,12 +1556,21 @@ def website_table_masses_from_report(
         ):
             m2_at_i = stored_at_i
 
+    m2_rv_ast = _finite_mass_value(report.get("m2_rv_astrometry_msun"))
+    variants = report.get("fit_variants")
+    if m2_rv_ast is None and isinstance(variants, dict) and m1 is not None:
+        full = variants.get("full")
+        if isinstance(full, dict):
+            _, m2_full = rv_only_mass_estimates(full, m1, incl)
+            m2_rv_ast = _finite_mass_value(m2_full)
+
     return {
         "m2_msun": resolve_m2_astrometric_msun(
             report, summary_path=summary_path, gaia_cache=gaia_cache
         ),
         "m2sin_i_msun": m2sin,
         "m2_at_i_msun": m2_at_i,
+        "m2_rv_astrometry_msun": m2_rv_ast,
     }
 
 

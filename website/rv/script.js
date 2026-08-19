@@ -50,6 +50,7 @@ const headerDisplayMap = {
     "M2 (Msun)": "Dark M2<br>(M<sub>⊙</sub>)",
     "M2sin i (Msun)": "M2 sin i<br>(M<sub>⊙</sub>)",
     "(M2sin i)/(sin i) (Msun)": "M2 at i<br>(M<sub>⊙</sub>)",
+    "M2 RV+astrometry (Msun)": "M2 RV+astrometry<br>(M<sub>⊙</sub>)",
     "INCLINATION (deg)": "Inclination<br>(deg)",
     "RV PLOT": "RV Curve",
     "RV FIT": "RV Fit",
@@ -981,6 +982,10 @@ function renderDataProductsCell(row) {
     let html = `<div class="product-links">`;
     if (hasApf) {
         html += `<div class="product-line"><a href="${apfUrl}" target="_blank" rel="noopener noreferrer">APF</a></div>`;
+        const rvFit = `${base}/Gaia/RV_Fit`;
+        html += `<div class="product-line"><a href="${rvFit}/${gaiaId}_joker_fit.json" target="_blank" rel="noopener noreferrer">Joker JSON</a></div>`;
+        html += `<div class="product-line"><a href="${rvFit}/" target="_blank" rel="noopener noreferrer">Joker chains</a></div>`;
+        html += `<div class="product-line"><a href="${base}/Gaia/Plots/Gaia_DR3_${gaiaId}_joker_corner.png" target="_blank" rel="noopener noreferrer">Joker corner</a></div>`;
     }
     if (hasKeck) {
         html += `<div class="product-line"><a href="${keckUrl}" target="_blank" rel="noopener noreferrer">KPF</a></div>`;

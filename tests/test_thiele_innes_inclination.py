@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from darkhunter_rv.thiele_innes_inclination import (
+    campbell_from_thiele_innes,
     campbell_to_thiele_innes,
     fill_inclination_in_metadata,
     inclination_deg_from_thiele_innes,
@@ -81,6 +82,34 @@ def test_fill_skips_when_database_inclination_present() -> None:
     }
     assert not fill_inclination_in_metadata(meta)
     assert meta["Inclination"] == 55.0
+
+
+def test_campbell_from_thiele_innes_round_trip() -> None:
+    a_mas, i_deg, omega_deg, Omega_deg = 2.5, 72.0, 40.0, 110.0
+    A, B, F, G = campbell_to_thiele_innes(a_mas, i_deg, omega_deg, Omega_deg)
+    ti = thiele_innes_from_metadata(
+        {
+            "A_Thiele_Innes": A,
+            "B_Thiele_Innes": B,
+            "F_Thiele_Innes": F,
+            "G_Thiele_Innes": G,
+            "A_Thiele_Innes_Error": 0.03,
+            "B_Thiele_Innes_Error": 0.03,
+            "F_Thiele_Innes_Error": 0.03,
+            "G_Thiele_Innes_Error": 0.03,
+        }
+    )
+    assert ti is not None
+    camp = campbell_from_thiele_innes(ti, mc_samples=512, seed=1)
+    assert camp is not None
+    assert camp.a_mas == pytest.approx(a_mas, rel=1e-5)
+    assert camp.i_deg == pytest.approx(i_deg, abs=1e-5)
+    A2, B2, F2, G2 = campbell_to_thiele_innes(camp.a_mas, camp.i_deg, camp.omega_deg, camp.Omega_deg)
+    assert A2 == pytest.approx(A, rel=1e-5, abs=1e-5)
+    assert B2 == pytest.approx(B, rel=1e-5, abs=1e-5)
+    assert F2 == pytest.approx(F, rel=1e-5, abs=1e-5)
+    assert G2 == pytest.approx(G, rel=1e-5, abs=1e-5)
+    assert camp.i_deg_err > 0
 
 
 def test_lowercase_adql_keys() -> None:

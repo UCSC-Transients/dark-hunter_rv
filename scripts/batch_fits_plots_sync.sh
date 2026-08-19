@@ -28,8 +28,9 @@ WEB_ROOT="${WEB_ROOT:-/var/www/html/darkhunter/rv}"
 PY="${PY:-/home/marley/anaconda2/envs/gaia-env/bin/python}"
 REPORTS_DIR="${REPORTS_DIR:-$REPO/rv_fit_reports}"
 LOG="${LOG:-$REPO/batch_fits_plots_sync.log}"
-MIN_POINTS="${MIN_POINTS:-7}"
+MIN_POINTS="${MIN_POINTS:-4}"
 RUN_FITS="${RUN_FITS:-1}"
+RV_FITTER="${RV_FITTER:-joker}"
 RUN_RV_PLOTS="${RUN_RV_PLOTS:-1}"
 RUN_HBETA_PLOTS="${RUN_HBETA_PLOTS:-1}"
 FIT_FORCE="${FIT_FORCE:-1}"
@@ -121,34 +122,63 @@ fi
 run_cmd "$PY" "${obs_args[@]}"
 
 if [[ "$RUN_FITS" == "1" ]]; then
-  echo "=== Keplerian fits ==="
-  fit_args=(
-    fit_apf_rv_keplerian.py
-    --all
-    --output-dir "$OUT"
-    --use-gaia-nss
-    --min-points "$MIN_POINTS"
-    --reports-dir "$REPORTS_DIR"
-    --data-csv "$DATA_CSV"
-  )
-  if [[ "$FIT_FORCE" == "1" ]]; then
-    fit_args+=(--force)
-  fi
-  if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
-    fit_args+=(--query-gaia-online)
-  fi
-  if [[ -n "$STAR_ID" ]]; then
-    fit_args=(fit_apf_rv_keplerian.py --summary "$OUT/Gaia_DR3_${STAR_ID}_summary.txt" --output-dir "$OUT" --use-gaia-nss --min-points "$MIN_POINTS" --reports-dir "$REPORTS_DIR" --data-csv "$DATA_CSV")
+  if [[ "$RV_FITTER" == "rvchi2" ]]; then
+    echo "=== Keplerian chi2 fits (--rvchi2) ==="
+    fit_args=(
+      fit_joker_rv.py
+      --rvchi2
+      --all
+      --output-dir "$OUT"
+      --use-gaia-nss
+      --min-points "$MIN_POINTS"
+      --reports-dir "$REPORTS_DIR"
+      --data-csv "$DATA_CSV"
+    )
     if [[ "$FIT_FORCE" == "1" ]]; then
       fit_args+=(--force)
     fi
     if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
       fit_args+=(--query-gaia-online)
     fi
+    if [[ -n "$STAR_ID" ]]; then
+      fit_args=(fit_joker_rv.py --rvchi2 --summary "$OUT/Gaia_DR3_${STAR_ID}_summary.txt" --output-dir "$OUT" --use-gaia-nss --min-points "$MIN_POINTS" --reports-dir "$REPORTS_DIR" --data-csv "$DATA_CSV")
+      if [[ "$FIT_FORCE" == "1" ]]; then
+        fit_args+=(--force)
+      fi
+      if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
+        fit_args+=(--query-gaia-online)
+      fi
+    fi
+  else
+    echo "=== Joker RV fits ==="
+    fit_args=(
+      fit_joker_rv.py
+      --all
+      --output-dir "$OUT"
+      --use-gaia-nss
+      --min-points "$MIN_POINTS"
+      --reports-dir "$REPORTS_DIR"
+      --data-csv "$DATA_CSV"
+    )
+    if [[ "$FIT_FORCE" == "1" ]]; then
+      fit_args+=(--force)
+    fi
+    if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
+      fit_args+=(--query-gaia-online)
+    fi
+    if [[ -n "$STAR_ID" ]]; then
+      fit_args=(fit_joker_rv.py --summary "$OUT/Gaia_DR3_${STAR_ID}_summary.txt" --output-dir "$OUT" --use-gaia-nss --min-points "$MIN_POINTS" --reports-dir "$REPORTS_DIR" --data-csv "$DATA_CSV")
+      if [[ "$FIT_FORCE" == "1" ]]; then
+        fit_args+=(--force)
+      fi
+      if [[ "$QUERY_GAIA_ONLINE" == "1" ]]; then
+        fit_args+=(--query-gaia-online)
+      fi
+    fi
   fi
   run_cmd "$PY" "${fit_args[@]}"
 else
-  echo "=== Keplerian fits (skipped: RUN_FITS=0) ==="
+  echo "=== RV fits (skipped: RUN_FITS=0) ==="
 fi
 
 if [[ "$RUN_RV_PLOTS" == "1" ]]; then
@@ -196,7 +226,8 @@ for summ in "${SUMMARY_FILES[@]}"; do
   staged_stars=$((staged_stars + 1))
 
   fit_png="$REPORTS_DIR/${gid}_keplerian_fit.png"
-  fit_json="$REPORTS_DIR/${gid}_keplerian_fit.json"
+  fit_json="$REPORTS_DIR/${gid}_joker_fit.json"
+  chi2_json="$REPORTS_DIR/${gid}_keplerian_fit.json"
   if [[ -f "$fit_png" ]]; then
     run_cmd cp "$fit_png" "$star_fit/${gid}_keplerian_fit.png"
     staged_fit_png=$((staged_fit_png + 1))
@@ -204,11 +235,19 @@ for summ in "${SUMMARY_FILES[@]}"; do
     echo "${gid},missing_fit_png,${fit_png}" >> "$MISSING_ASSETS_CSV"
   fi
   if [[ -f "$fit_json" ]]; then
-    run_cmd cp "$fit_json" "$star_fit/${gid}_keplerian_fit.json"
+    run_cmd cp "$fit_json" "$star_fit/${gid}_joker_fit.json"
+    staged_fit_json=$((staged_fit_json + 1))
+  elif [[ -f "$chi2_json" ]]; then
+    run_cmd cp "$chi2_json" "$star_fit/${gid}_keplerian_fit.json"
     staged_fit_json=$((staged_fit_json + 1))
   elif [[ "$DRY_RUN" != "1" ]]; then
     echo "${gid},missing_fit_json,${fit_json}" >> "$MISSING_ASSETS_CSV"
   fi
+  for chain in "$REPORTS_DIR/${gid}_joker_"*.hdf5; do
+    if [[ -f "$chain" ]]; then
+      run_cmd cp "$chain" "$star_fit/$(basename "$chain")"
+    fi
+  done
 
   src_plot_dir="$OUT/Gaia_DR3_${gid}"
   if [[ -d "$src_plot_dir" ]]; then

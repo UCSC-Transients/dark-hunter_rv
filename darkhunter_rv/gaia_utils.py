@@ -43,6 +43,11 @@ def parse_gaia_id_from_path(path: str | Path) -> int | None:
     return None
 
 
+# Heidelberg ARI mirror of Gaia TAP (used when the ESA archive is down).
+GAIA_ARI_TAP_URL = "https://gaia.ari.uni-heidelberg.de/tap"
+_ARI_TAP = None
+
+
 def _gaia_class():
     """Lazy import: avoids astroquery's noisy archive banner when only reading summaries from disk."""
     try:
@@ -51,6 +56,21 @@ def _gaia_class():
         return Gaia
     except ImportError:
         return None
+
+
+def _ari_tap():
+    """Lazy TapPlus client for the Heidelberg ARI Gaia TAP mirror."""
+    global _ARI_TAP
+    if _ARI_TAP is None:
+        from astroquery.utils.tap.core import TapPlus
+
+        _ARI_TAP = TapPlus(url=GAIA_ARI_TAP_URL)
+    return _ARI_TAP
+
+
+def _tap_job_rows(job) -> list:
+    r = job.get_results()
+    return [dict(zip(r.colnames, row)) for row in r]
 
 
 def parse_gaia_id(filename):
@@ -63,20 +83,28 @@ def parse_gaia_id(filename):
 
 def execute_gaia_adql(query: str, name: str) -> list:
     """
-    Run ADQL on the Gaia archive via astroquery only (ESA TAP sync HTTP fallback was removed:
-    post-upgrade archives reject valid DR3 queries on that endpoint).
+    Run ADQL on the ESA Gaia archive via astroquery.
+
+    ESA TAP sync HTTP is not used (post-upgrade archives reject valid DR3
+    queries on that endpoint). If the ESA async job fails, retry the same
+    query on the Heidelberg ARI TAP mirror.
     """
     logging.info("Querying %s...", name)
     Gaia = _gaia_class()
-    if Gaia is None:
-        logging.warning("%s: astroquery.gaia is not installed", name)
-        return []
+    if Gaia is not None:
+        try:
+            job = Gaia.launch_job_async(query, dump_to_file=False)
+            return _tap_job_rows(job)
+        except Exception as e:
+            logging.warning("%s ESA query failed: %s; trying ARI TAP", name, e)
+    else:
+        logging.warning("%s: astroquery.gaia is not installed; trying ARI TAP", name)
+
     try:
-        job = Gaia.launch_job_async(query, dump_to_file=False)
-        r = job.get_results()
-        return [dict(zip(r.colnames, row)) for row in r]
+        job = _ari_tap().launch_job(query, dump_to_file=False)
+        return _tap_job_rows(job)
     except Exception as e:
-        logging.warning("%s query failed: %s", name, e)
+        logging.warning("%s ARI TAP query failed: %s", name, e)
         return []
 
 
