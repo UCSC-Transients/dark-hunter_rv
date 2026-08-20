@@ -7,6 +7,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+import matplotlib.image as mpimg
 import numpy as np
 
 from darkhunter_rv.joker_rv_fit import params_from_keplerian
@@ -59,3 +60,6 @@ def test_joker_fit_and_corner_png(tmp_path: Path) -> None:
     assert corner_png.is_file()
     assert fit_png.stat().st_size > 1000
     assert corner_png.stat().st_size > 1000
+    img = mpimg.imread(corner_png)
+    h, w = img.shape[0], img.shape[1]
+    assert h >= w * 0.85

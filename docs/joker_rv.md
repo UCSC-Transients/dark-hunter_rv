@@ -10,7 +10,7 @@ Chi2 least-squares remains in `fit_apf_rv_keplerian.py`. Invoke it with `python 
 
 ## Four prior variants
 
-Shared: `P_min=20 d`, `P_max=2000 d` (expanded if Gaia P ± 5σ is outside), `sigma_K0 = max(mean(RV), 30 km/s)`, `sigma_v = max(max(|RV|), 100 km/s)`.
+Shared: `P_min=80 d`, `P_max=2000 d` (P_max expanded if Gaia P ± 5σ is outside), `sigma_K0 = max(mean(RV), 30 km/s)`, `sigma_v = max(max(|RV|), 100 km/s)`.
 
 | id | Priors |
 |----|--------|
