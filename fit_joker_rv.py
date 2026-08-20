@@ -21,7 +21,9 @@ from darkhunter_rv.joker_rv_fit import (
     JOKER_VARIANT_ORDER,
     DEFAULT_PRIOR_SIZE,
     envelope_report,
+    joker_t_ref_mjd,
     masses_from_report_variants,
+    merge_nss_dicts,
     random_param_rows,
     run_joker_variant,
     should_skip_refit,
@@ -118,12 +120,14 @@ def run_one_joker(
     gaia_nss = None
     if use_gaia_nss:
         gaia_nss = load_nss_priors_from_summary(summary_path)
-        if gaia_nss is None and gaia_source_id is not None:
-            gaia_nss = load_gaia_nss_from_cache(gaia_source_id, gaia_cache_path)
-            if gaia_nss is None and query_gaia_online:
-                gaia_nss = fetch_gaia_nss_orbit(gaia_source_id, cache_path=gaia_cache_path)
+        cached = None
+        if gaia_source_id is not None:
+            cached = load_gaia_nss_from_cache(gaia_source_id, gaia_cache_path)
+            if cached is None and query_gaia_online:
+                cached = fetch_gaia_nss_orbit(gaia_source_id, cache_path=gaia_cache_path)
+        gaia_nss = merge_nss_dicts(gaia_nss, cached)
 
-    t_ref = float(np.median(t))
+    t_ref = joker_t_ref_mjd(t)
     now_mjd = float(Time.now().mjd)
     table_m1 = table_m1_msun
     dummy = {
@@ -147,6 +151,7 @@ def run_one_joker(
     corner_arrays: Dict[str, Dict[str, np.ndarray]] = {}
 
     for variant in variants:
+        print(f"[JOKER] {stem} variant={variant}", flush=True)
         chain_path = reports_dir / f"{stem}_joker_{variant}.hdf5"
         arr, spec, sampler = run_joker_variant(
             variant,
@@ -165,6 +170,7 @@ def run_one_joker(
         )
         if arr is None:
             reason = str(spec.get("skip_reason") or "skipped")
+            print(f"[SKIP] {stem} variant={variant}: {reason}", flush=True)
             variant_blocks[variant] = skipped_variant_block(variant, reason, len(t))
             continue
         block = summarize_sample_arrays(

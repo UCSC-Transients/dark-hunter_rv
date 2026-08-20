@@ -58,6 +58,28 @@ def test_load_nss_priors_from_summary_no_network(tmp_path: Path) -> None:
     assert priors["eccentricity"] == pytest.approx(0.15)
 
 
+def test_load_nss_priors_includes_period_error(tmp_path: Path) -> None:
+    summ = tmp_path / "Gaia_DR3_1" / "Gaia_DR3_1_summary.txt"
+    summ.parent.mkdir(parents=True)
+    summ.write_text(
+        "[GAIA METADATA]\n"
+        "Source_ID: 1\n"
+        "NSS_Solution_Type: Orbital\n"
+        "Period: 120.0\n"
+        "Period_Error: 4.0\n"
+        "Eccentricity: 0.25\n"
+        "Eccentricity_Error: 0.03\n"
+        "Arg_Periastron: 40.0\n"
+        "Arg_Periastron_Error: 5.0\n"
+        "\n[PIPELINE RESULTS]\n"
+    )
+    priors = fitmod.load_nss_priors_from_summary(summ)
+    assert priors is not None
+    assert priors["period_days_error"] == pytest.approx(4.0)
+    assert priors["eccentricity_error"] == pytest.approx(0.03)
+    assert priors["omega_deg"] == pytest.approx(40.0)
+
+
 def test_discover_summary_files_nested_only(tmp_path: Path) -> None:
     _write_star_summary(tmp_path / "Gaia_DR3_111" / "Gaia_DR3_111_summary.txt")
     found = fitmod.discover_summary_files(tmp_path)

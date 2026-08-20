@@ -123,7 +123,35 @@ def load_nss_priors_from_summary(path: Path) -> Optional[Dict[str, float]]:
         out["m2_msun"] = m2
     if incl is not None and np.isfinite(incl):
         out["inclination_deg"] = float(incl)
+    enrich_nss_keplerian_fields(_nss_adql_aliases_from_metadata(meta), out)
     return out
+
+
+def _nss_adql_aliases_from_metadata(meta: dict) -> dict:
+    """Map [GAIA METADATA] keys onto ADQL/cache names for enrich_nss_keplerian_fields."""
+    row = dict(meta)
+    aliases = {
+        "period_error": _meta_float(meta, "Period_Error", "period_error", "period_days_error"),
+        "eccentricity_error": _meta_float(meta, "Eccentricity_Error", "eccentricity_error"),
+        "arg_periastron": _meta_float(meta, "Arg_Periastron", "arg_periastron", "omega_deg"),
+        "arg_periastron_error": _meta_float(
+            meta, "Arg_Periastron_Error", "arg_periastron_error", "omega_deg_error"
+        ),
+        "t_periastron": _meta_float(meta, "T_Periastron", "t_periastron"),
+        "t_periastron_error": _meta_float(meta, "T_Periastron_Error", "t_periastron_error"),
+        "a_thiele_innes": _meta_float(meta, "A_Thiele_Innes", "a_thiele_innes"),
+        "a_thiele_innes_error": _meta_float(meta, "A_Thiele_Innes_Error", "a_thiele_innes_error"),
+        "b_thiele_innes": _meta_float(meta, "B_Thiele_Innes", "b_thiele_innes"),
+        "b_thiele_innes_error": _meta_float(meta, "B_Thiele_Innes_Error", "b_thiele_innes_error"),
+        "f_thiele_innes": _meta_float(meta, "F_Thiele_Innes", "f_thiele_innes"),
+        "f_thiele_innes_error": _meta_float(meta, "F_Thiele_Innes_Error", "f_thiele_innes_error"),
+        "g_thiele_innes": _meta_float(meta, "G_Thiele_Innes", "g_thiele_innes"),
+        "g_thiele_innes_error": _meta_float(meta, "G_Thiele_Innes_Error", "g_thiele_innes_error"),
+    }
+    for key, val in aliases.items():
+        if val is not None:
+            row[key] = val
+    return row
 
 
 def load_mass_priors_from_summary(path: Path) -> Dict[str, float]:
@@ -1560,7 +1588,7 @@ def website_table_masses_from_report(
     variants = report.get("fit_variants")
     if m2_rv_ast is None and isinstance(variants, dict) and m1 is not None:
         full = variants.get("full")
-        if isinstance(full, dict):
+        if isinstance(full, dict) and full.get("P_days") is not None:
             _, m2_full = rv_only_mass_estimates(full, m1, incl)
             m2_rv_ast = _finite_mass_value(m2_full)
 
@@ -1582,7 +1610,12 @@ def rv_only_mass_estimates(
     """M2 sin i and M2 at i from the RV-only Keplerian report and astrometric inputs."""
     fm = rep_free.get("mass_function_msun")
     if fm is None or not np.isfinite(fm):
-        fm = mass_function_msun(rep_free["P_days"], rep_free["K_kms"], rep_free["e"])
+        p = rep_free.get("P_days")
+        k = rep_free.get("K_kms")
+        e = rep_free.get("e")
+        if p is None or k is None or e is None:
+            return None, None
+        fm = mass_function_msun(p, k, e)
     if fm is None or not np.isfinite(fm) or fm <= 0:
         return None, None
     m1 = _finite_mass_value(m1_msun)

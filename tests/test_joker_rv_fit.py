@@ -10,9 +10,11 @@ import pytest
 from darkhunter_rv.joker_rv_fit import (
     envelope_report,
     is_unimodal_enough,
+    joker_t_ref_mjd,
     masses_from_report_variants,
     mean_anomaly_rad,
     median_params_from_arrays,
+    merge_nss_dicts,
     period_bounds_days,
     prior_spec_for_variant,
     should_skip_refit,
@@ -37,8 +39,33 @@ def test_sigma_k0_and_sigma_v() -> None:
 
 def test_period_bounds_expand_for_long_nss() -> None:
     lo, hi = period_bounds_days({"period_days": 2500.0, "period_days_error": 10.0})
-    assert lo == 20.0
+    assert lo == 80.0
     assert hi >= 2550.0
+
+
+def test_period_bounds_floor_stays_80() -> None:
+    lo, hi = period_bounds_days({"period_days": 90.0, "period_days_error": 20.0})
+    assert lo == 80.0
+    assert hi == 2000.0
+
+
+def test_joker_t_ref_is_min_time() -> None:
+    t = np.array([60100.0, 60010.0, 60050.0])
+    assert joker_t_ref_mjd(t) == 60010.0
+
+
+def test_merge_nss_fills_errors() -> None:
+    merged = merge_nss_dicts(
+        {"period_days": 120.0, "eccentricity": 0.2},
+        {"period_days_error": 3.0, "eccentricity_error": 0.05, "omega_deg": 40.0, "omega_deg_error": 5.0},
+    )
+    assert merged is not None
+    spec_p = prior_spec_for_variant("period", merged, t_ref_mjd=60000.0)
+    spec_e = prior_spec_for_variant("ecc", merged, t_ref_mjd=60000.0)
+    spec_f = prior_spec_for_variant("full", merged, t_ref_mjd=60000.0)
+    assert spec_p["skip_reason"] is None
+    assert spec_e["skip_reason"] is None
+    assert spec_f["skip_reason"] is None
 
 
 def test_ecc_prior_is_truncated() -> None:
@@ -164,6 +191,27 @@ def test_enrich_nss_from_thiele_innes() -> None:
     assert out["period_days_error"] == 1.5
     assert "omega_deg" in out
     assert "inclination_deg" in out
+
+
+def test_website_masses_skipped_full_variant_no_p_days() -> None:
+    p_days = 100.0
+    k = 30.0
+    e = 0.1
+    from fit_apf_rv_keplerian import mass_function_msun
+
+    fm = mass_function_msun(p_days, k, e)
+    rep = {
+        "used_m2_msun": 0.55,
+        "used_m1_msun": 1.0,
+        "gaia_nss": {"inclination_deg": 60.0},
+        "fit_variants": {
+            "rv_only": {"P_days": p_days, "K_kms": k, "e": e, "mass_function_msun": fm},
+            "full": {"skip_reason": "missing_period_prior", "n_samples": 0},
+        },
+    }
+    cols = website_table_masses_from_report(rep)
+    assert cols["m2_msun"] == pytest.approx(0.55)
+    assert cols["m2_rv_astrometry_msun"] is None
 
 
 def test_website_masses_joker_full_column() -> None:
