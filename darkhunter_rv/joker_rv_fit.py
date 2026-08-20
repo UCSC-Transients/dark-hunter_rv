@@ -26,7 +26,7 @@ JOKER_VARIANT_LABEL: Dict[str, str] = {
     "full": "RV + NSS",
 }
 
-P_MIN_DAYS = 20.0
+P_MIN_DAYS = 80.0
 P_MAX_DAYS = 2000.0
 SIGMA_K0_FLOOR_KMS = 30.0
 SIGMA_V_FLOOR_KMS = 100.0
@@ -62,8 +62,34 @@ def sigma_v_kms(rvs: np.ndarray) -> float:
     return float(max(float(np.max(np.abs(finite))), SIGMA_V_FLOOR_KMS))
 
 
+def joker_t_ref_mjd(t: np.ndarray) -> float:
+    """Joker RVData default epoch: minimum observation time (M0 is defined here)."""
+    finite = np.asarray(t, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if finite.size == 0:
+        raise ValueError("no finite times for Joker t_ref")
+    return float(np.min(finite))
+
+
+def merge_nss_dicts(
+    primary: Optional[Mapping[str, Any]],
+    secondary: Optional[Mapping[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Fill missing NSS prior fields from a second dict (e.g. Gaia cache)."""
+    if primary is None and secondary is None:
+        return None
+    out: Dict[str, Any] = dict(primary or {})
+    if secondary:
+        for key, val in secondary.items():
+            if val is None:
+                continue
+            if key not in out or out[key] is None:
+                out[key] = val
+    return out
+
+
 def period_bounds_days(nss: Optional[Mapping[str, Any]]) -> Tuple[float, float]:
-    """Default 20–2000 d, expanded to cover Gaia P ± 5σ when needed."""
+    """Default 80–2000 d; expand P_max to cover Gaia P ± 5σ. Never below P_MIN_DAYS."""
     p_min = P_MIN_DAYS
     p_max = P_MAX_DAYS
     if not nss:
@@ -72,10 +98,7 @@ def period_bounds_days(nss: Optional[Mapping[str, Any]]) -> Tuple[float, float]:
     if p is None:
         return p_min, p_max
     perr = _finite(nss.get("period_days_error")) or 0.0
-    lo = p - 5.0 * perr
     hi = p + 5.0 * perr
-    if lo < p_min:
-        p_min = max(1.0, float(lo))
     if hi > p_max:
         p_max = float(hi)
     return p_min, p_max
@@ -513,7 +536,12 @@ def run_joker_variant(
         return None, spec, "skipped"
 
     prior, spec = _build_joker_prior(variant, nss, rvs=y, t_ref_mjd=t_ref_mjd)
-    data = tj.RVData(t=Time(t, format="mjd"), rv=y * u.km / u.s, rv_err=yerr * u.km / u.s)
+    data = tj.RVData(
+        t=Time(t, format="mjd"),
+        rv=y * u.km / u.s,
+        rv_err=yerr * u.km / u.s,
+        t_ref=Time(t_ref_mjd, format="mjd"),
+    )
     joker = tj.TheJoker(prior, rng=rng)
     prior_samples = prior.sample(size=int(prior_size), rng=rng)
     if old_chain_path is not None and old_chain_path.is_file():

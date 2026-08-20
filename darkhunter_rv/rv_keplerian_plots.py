@@ -775,7 +775,11 @@ def plot_joker_corners(
     *,
     gaia_id: Optional[str] = None,
 ) -> None:
-    """Four stacked posterior corners (RV-only on top, full NSS on bottom)."""
+    """Four stacked posterior corners (RV-only on top, full NSS on bottom).
+
+    Each panel is square. Figure height scales with the number of variants so
+    the plots stay readable.
+    """
     keys = [k for k in JOKER_VARIANT_ORDER if k in corner_arrays]
     if not keys:
         raise ValueError("no corner arrays")
@@ -783,9 +787,13 @@ def plot_joker_corners(
     labels = ("P (d)", "K (km/s)", "e", "ω (deg)", "γ (km/s)")
     n_var = len(keys)
     n_par = len(names)
-    fig, axes = plt.subplots(n_var * n_par, n_par, figsize=(9.5, 2.6 * n_var))
-    if n_var == 1:
-        axes = np.array(axes)
+    panel_in = 1.65
+    fig, axes = plt.subplots(
+        n_var * n_par,
+        n_par,
+        figsize=(panel_in * n_par, panel_in * n_par * n_var),
+        squeeze=False,
+    )
     for vi, variant in enumerate(keys):
         data = corner_arrays[variant]
         cols = [np.asarray(data[n], dtype=float) for n in names]
@@ -801,21 +809,22 @@ def plot_joker_corners(
                     ax.hist(stack[:, i], bins=24, color=color, alpha=0.75, histtype="stepfilled")
                 else:
                     ax.plot(stack[:, j], stack[:, i], ".", ms=2.2, color=color, alpha=0.45)
+                ax.set_box_aspect(1)
                 if i == n_par - 1:
-                    ax.set_xlabel(labels[j], fontsize=7)
+                    ax.set_xlabel(labels[j], fontsize=8)
                 else:
                     ax.set_xticklabels([])
                 if j == 0:
-                    ax.set_ylabel(labels[i], fontsize=7)
+                    ax.set_ylabel(labels[i], fontsize=8)
                 else:
                     ax.set_yticklabels([])
-                ax.tick_params(labelsize=6)
-        axes[vi * n_par, 0].set_title(JOKER_VARIANT_LABEL.get(variant, variant), loc="left", fontsize=9)
+                ax.tick_params(labelsize=7)
+        axes[vi * n_par, 0].set_title(JOKER_VARIANT_LABEL.get(variant, variant), loc="left", fontsize=11)
     title = "Joker posteriors"
     if gaia_id:
         title = f"{title}: Gaia DR3 {gaia_id}"
-    fig.suptitle(title, fontsize=11)
+    fig.suptitle(title, fontsize=13)
+    fig.subplots_adjust(hspace=0.22, wspace=0.22, top=0.97)
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
     fig.savefig(out_png, dpi=140, bbox_inches="tight")
     plt.close(fig)
