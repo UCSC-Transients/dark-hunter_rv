@@ -113,7 +113,11 @@ def run_one_joker(
     if should_skip_refit(out_json, summary_path, len(t), force=force):
         print(f"[SKIP] {summary_path.name}: joker JSON up to date (n_rv={len(t)})")
         try:
-            return json.loads(out_json.read_text())
+            report = json.loads(out_json.read_text())
+            from darkhunter_rv.rv_summary_json import attach_joker_fit_to_summary_json
+
+            attach_joker_fit_to_summary_json(summary_path, report, joker_fit_path=out_json)
+            return report
         except Exception:
             return None
 
@@ -259,6 +263,9 @@ def run_one_joker(
             shutil.copy2(corner_png, star_dir / f"Gaia_DR3_{gaia_source_id}_joker_corner.png")
 
     out_json.write_text(json.dumps(report, indent=2))
+    from darkhunter_rv.rv_summary_json import attach_joker_fit_to_summary_json
+
+    attach_joker_fit_to_summary_json(summary_path, report, joker_fit_path=out_json)
     return report
 
 
