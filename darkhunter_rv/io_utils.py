@@ -676,3 +676,12 @@ def write_star_summary(obj_id, gaia_data, pipeline_results):
             f.write(merged[bn] + "\n")
 
     logging.info(f"Detailed star summary written to {outfile} ({len(ordered)} pipeline rows)")
+
+    from darkhunter_rv.rv_summary_json import write_rv_summary_json
+
+    write_rv_summary_json(
+        obj_id,
+        gaia_data,
+        merged,
+        output_dir=config.OUTPUT_DIR,
+    )
