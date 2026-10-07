@@ -113,8 +113,8 @@ def t_periastron_gaia_to_mjd(t_periastron_gaia: float) -> float:
 
 
 def mean_anomaly_rad(t_peri_mjd: float, period_days: float, t_ref_mjd: float) -> float:
-    """M0 at t_ref for The Joker, wrapped to [0, 2π)."""
-    return float((2.0 * np.pi * ((t_ref_mjd - t_peri_mjd) / period_days)) % (2.0 * np.pi))
+    """Joker/twobody M0 (periastron at t_ref + P·M0/2π), wrapped to [0, 2π)."""
+    return float((2.0 * np.pi * ((t_peri_mjd - t_ref_mjd) / period_days)) % (2.0 * np.pi))
 
 
 def _finite(value: Any) -> Optional[float]:
@@ -437,15 +437,28 @@ def arrays_from_joker_samples(samples: Any) -> Dict[str, np.ndarray]:
         v0 = _to("v0", u.km / u.s)
     except Exception:
         v0 = _to("v0")
-    k = np.abs(k)
-    return {
-        "P_days": p,
-        "K_kms": k,
-        "e": e,
-        "omega_rad": omega,
-        "M0_rad": m0,
-        "gamma_kms": v0,
-    }
+    return joker_to_rv_model_elements(
+        {"P_days": p, "K_kms": k, "e": e, "omega_rad": omega, "M0_rad": m0, "gamma_kms": v0}
+    )
+
+
+def joker_to_rv_model_elements(arr: Mapping[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    """
+    Convert Joker/twobody elements to the ``rv_model`` convention.
+
+    twobody: ``M = 2π(t - t_ref)/P - M0`` and K may be negative.
+    ``rv_model``: ``M = 2π(t - t_ref)/P + M0`` with K >= 0, so M0 flips sign and
+    negative-K samples take ``omega + π``.
+    """
+    two_pi = 2.0 * np.pi
+    k = np.asarray(arr["K_kms"], dtype=float)
+    omega = np.asarray(arr["omega_rad"], dtype=float)
+    m0 = np.asarray(arr["M0_rad"], dtype=float)
+    out = {key: np.asarray(val, dtype=float) for key, val in arr.items()}
+    out["K_kms"] = np.abs(k)
+    out["omega_rad"] = np.where(k < 0, omega + np.pi, omega) % two_pi
+    out["M0_rad"] = (-m0) % two_pi
+    return out
 
 
 def _build_joker_prior(
