@@ -11,10 +11,12 @@ from darkhunter_rv.joker_rv_fit import (
     envelope_report,
     is_unimodal_enough,
     joker_t_ref_mjd,
+    joker_to_rv_model_elements,
     masses_from_report_variants,
     mean_anomaly_rad,
     median_params_from_arrays,
     merge_nss_dicts,
+    params_from_keplerian,
     period_bounds_days,
     prior_spec_for_variant,
     should_skip_refit,
@@ -23,7 +25,17 @@ from darkhunter_rv.joker_rv_fit import (
     summarize_sample_arrays,
     t_periastron_gaia_to_mjd,
 )
-from fit_apf_rv_keplerian import enrich_nss_keplerian_fields, website_table_masses_from_report
+from fit_apf_rv_keplerian import enrich_nss_keplerian_fields, rv_model, website_table_masses_from_report
+
+
+def _twobody_rv(t, t_ref, p, k, e, omega, m0, v0):
+    """Port of twobody ``c_rv_from_elements`` (The Joker likelihood model)."""
+    mean = 2.0 * np.pi * (t - t_ref) / p - m0
+    ecc = mean + e * np.sin(mean)
+    for _ in range(100):
+        ecc = ecc + (mean - (ecc - e * np.sin(ecc))) / (1.0 - e * np.cos(ecc))
+    f = 2.0 * np.arctan2(np.sqrt(1 + e) * np.sin(ecc / 2), np.sqrt(1 - e) * np.cos(ecc / 2))
+    return v0 + k * (np.cos(omega + f) + e * np.cos(omega))
 
 
 def test_sigma_k0_and_sigma_v() -> None:
@@ -97,6 +109,46 @@ def test_t0_and_m0() -> None:
     assert mjd > 57000.0
     m0 = mean_anomaly_rad(mjd, 100.0, mjd)
     assert m0 == 0.0
+    m0_late = mean_anomaly_rad(60025.0, 100.0, 60000.0)
+    assert m0_late == pytest.approx(np.pi / 2)
+
+
+@pytest.mark.parametrize("k_sign", [1.0, -1.0])
+def test_joker_elements_match_twobody_model(k_sign: float) -> None:
+    t_ref = 60000.0
+    t = np.linspace(t_ref, t_ref + 700.0, 50)
+    joker = {
+        "P_days": np.array([123.0]),
+        "K_kms": np.array([k_sign * 25.0]),
+        "e": np.array([0.35]),
+        "omega_rad": np.array([1.1]),
+        "M0_rad": np.array([2.3]),
+        "gamma_kms": np.array([-7.0]),
+    }
+    expected = _twobody_rv(
+        t, t_ref, 123.0, k_sign * 25.0, 0.35, 1.1, 2.3, -7.0
+    )
+    conv = joker_to_rv_model_elements(joker)
+    assert conv["K_kms"][0] == pytest.approx(25.0)
+    params = params_from_keplerian(
+        float(conv["P_days"][0]),
+        float(conv["K_kms"][0]),
+        float(conv["e"][0]),
+        float(conv["omega_rad"][0]),
+        float(conv["M0_rad"][0]),
+        float(conv["gamma_kms"][0]),
+    )
+    np.testing.assert_allclose(rv_model(params, t, t_ref), expected, atol=1e-6)
+
+
+def test_gaia_periastron_m0_lands_on_periastron() -> None:
+    t_ref = 60000.0
+    p = 150.0
+    t_peri = 60040.0
+    m0 = mean_anomaly_rad(t_peri, p, t_ref)
+    t = np.array([t_peri, t_peri + p])
+    rv = _twobody_rv(t, t_ref, p, 10.0, 0.4, 0.0, m0, 0.0)
+    np.testing.assert_allclose(rv, 10.0 * 1.4, atol=1e-8)
 
 
 def test_summarize_and_masses() -> None:
