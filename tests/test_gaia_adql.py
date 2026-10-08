@@ -83,6 +83,18 @@ def test_execute_gaia_adql_returns_empty_when_both_fail(monkeypatch):
     assert gaia_utils.execute_gaia_adql("SELECT 1", "unit") == []
 
 
+def test_execute_gaia_adql_external_tables_skip_ari(monkeypatch):
+    esa = _FakeEsaGaia(error=RuntimeError("esa down"))
+    ari = _FakeAriTap(rows=[{"ok": 1}])
+    monkeypatch.setattr(gaia_utils, "_gaia_class", lambda: esa)
+    monkeypatch.setattr(gaia_utils, "_ari_tap", lambda: ari)
+
+    query = "SELECT hrv_sparv FROM external.ravedr6 WHERE 1=1"
+    assert gaia_utils.execute_gaia_adql(query, "RAVE DR6") == []
+    assert esa.calls == 1
+    assert ari.calls == 0
+
+
 def test_execute_gaia_adql_uses_ari_if_esa_missing(monkeypatch):
     ari = _FakeAriTap(rows=[{"ok": 1}])
     monkeypatch.setattr(gaia_utils, "_gaia_class", lambda: None)
