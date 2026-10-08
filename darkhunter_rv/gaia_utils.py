@@ -268,6 +268,85 @@ def query_gaia_data(source_id):
     return result
 
 
+_LAMOST_LRS_ID_COLS = (
+    "CAST(obsid AS VARCHAR(32)) AS ext_id, CAST(1 AS INTEGER) AS ext_coadd, "
+    "CAST(0 AS BIGINT) AS ext_lmjm"
+)
+_LAMOST_MRS_ID_COLS = (
+    "CAST(obsid AS VARCHAR(32)) AS ext_id, CAST(coadd AS INTEGER) AS ext_coadd, "
+    "CAST(lmjm AS BIGINT) AS ext_lmjm"
+)
+_RAVE_ID_COLS = (
+    "CAST('' AS VARCHAR(32)) AS ext_id, CAST(1 AS INTEGER) AS ext_coadd, "
+    "CAST(0 AS BIGINT) AS ext_lmjm"
+)
+
+# LAMOST "local" times are Beijing time (UTC+8); obsdate is the local evening date.
+LAMOST_UTC_OFFSET_DAYS = 8.0 / 24.0
+LAMOST_OBSDATE_TO_LOCAL_MIDNIGHT_DAYS = 1.0 - LAMOST_UTC_OFFSET_DAYS
+
+
+def _int_or_none(value) -> int | None:
+    if value is None or np.ma.is_masked(value):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def lamost_lmjm_to_mjd(lmjm) -> float | None:
+    """UTC MJD from LAMOST local modified Julian minute (exposure start)."""
+    m = _int_or_none(lmjm)
+    if m is None or m <= 0:
+        return None
+    return m / 1440.0 - LAMOST_UTC_OFFSET_DAYS
+
+
+def lamost_obsdate_to_mjd(obs_str) -> float:
+    """UTC MJD of local midnight on a LAMOST observing night (obsdate is the evening date)."""
+    if not obs_str or not str(obs_str).strip():
+        return 0.0
+    try:
+        day = Time(str(obs_str).strip(), format="isot", scale="utc").mjd
+    except Exception:
+        return 0.0
+    return float(np.floor(day)) + LAMOST_OBSDATE_TO_LOCAL_MIDNIGHT_DAYS
+
+
+def _collapse_lamost_rows(rows: list) -> list:
+    """
+    One row per LAMOST spectrum, each with a UTC ``mjd``.
+
+    MRS lists every spectrum once per band (B and R) with the same combined RV, and
+    each night as a coadd (``coadd=1``, ``lmjm=0``) plus its single exposures. Keep the
+    coadd timed at the mean exposure start; use single exposures only if no coadd exists.
+    """
+    groups: dict[str, list] = {}
+    for r in rows:
+        obsid = str(r.get("ext_id") or "").strip()
+        key = obsid or f"{r.get('obs_str')}|{r.get('rv_z')}|{r.get('err_z')}"
+        groups.setdefault(key, []).append(r)
+    out: list = []
+    for grp in groups.values():
+        exposures: dict[int, dict] = {}
+        coadd = None
+        for r in grp:
+            lmjm = _int_or_none(r.get("ext_lmjm"))
+            if _int_or_none(r.get("ext_coadd")) == 0 and lmjm and lmjm > 0:
+                exposures.setdefault(lmjm, r)
+            elif coadd is None:
+                coadd = r
+        if coadd is not None:
+            times = [lamost_lmjm_to_mjd(m) for m in exposures]
+            mjd = float(np.mean(times)) if times else lamost_obsdate_to_mjd(coadd.get("obs_str"))
+            out.append({**coadd, "mjd": mjd})
+        else:
+            for lmjm in sorted(exposures):
+                out.append({**exposures[lmjm], "mjd": lamost_lmjm_to_mjd(lmjm)})
+    return out
+
+
 def _query_external_rvs_combined(prop_args: str) -> list:
     """
     Single ADQL job: LAMOST LRS + MRS + RAVE cone rows (UNION ALL).
@@ -285,7 +364,8 @@ def _query_external_rvs_combined(prop_args: str) -> list:
            CAST(obsdate AS VARCHAR) AS obs_str,
            z AS rv_z,
            z_err AS err_z,
-           CAST('z_meas' AS VARCHAR(16)) AS flag_raw
+           CAST('z_meas' AS VARCHAR(16)) AS flag_raw,
+           {_LAMOST_LRS_ID_COLS}
     FROM external.lamost_dr9_lrs
     WHERE {cone}
 
@@ -295,7 +375,8 @@ def _query_external_rvs_combined(prop_args: str) -> list:
            CAST(obsdate AS VARCHAR) AS obs_str,
            rv_br1 AS rv_z,
            rv_br1_err AS err_z,
-           CAST(rv_br_flag AS VARCHAR(16)) AS flag_raw
+           CAST(rv_br_flag AS VARCHAR(16)) AS flag_raw,
+           {_LAMOST_MRS_ID_COLS}
     FROM external.lamost_dr9_mrs
     WHERE {cone}
 
@@ -305,7 +386,8 @@ def _query_external_rvs_combined(prop_args: str) -> list:
            CAST('' AS VARCHAR) AS obs_str,
            hrv_sparv AS rv_z,
            hrv_error_sparv AS err_z,
-           CAST(rave_obs_id AS VARCHAR(32)) AS flag_raw
+           CAST(rave_obs_id AS VARCHAR(32)) AS flag_raw,
+           {_RAVE_ID_COLS}
     FROM external.ravedr6
     WHERE 1=CONTAINS(
         POINT('ICRS', external.ravedr6.ra_input, external.ravedr6.dec_input),
@@ -332,19 +414,19 @@ def _query_external_rvs_sequential(prop_args: str) -> list:
     )"""
     q_lrs = f"""
     SELECT 'LAMOST_LRS' AS ext_cat, CAST(obsdate AS VARCHAR) AS obs_str, z AS rv_z, z_err AS err_z,
-           CAST('z_meas' AS VARCHAR(16)) AS flag_raw
+           CAST('z_meas' AS VARCHAR(16)) AS flag_raw, {_LAMOST_LRS_ID_COLS}
     FROM external.lamost_dr9_lrs
     WHERE {cone_l}
     """
     q_mrs = f"""
     SELECT 'LAMOST_MRS' AS ext_cat, CAST(obsdate AS VARCHAR) AS obs_str, rv_br1 AS rv_z, rv_br1_err AS err_z,
-           CAST(rv_br_flag AS VARCHAR(16)) AS flag_raw
+           CAST(rv_br_flag AS VARCHAR(16)) AS flag_raw, {_LAMOST_MRS_ID_COLS}
     FROM external.lamost_dr9_mrs
     WHERE {cone_l}
     """
     q_rave = f"""
     SELECT 'RAVE_DR6' AS ext_cat, CAST('' AS VARCHAR) AS obs_str, hrv_sparv AS rv_z, hrv_error_sparv AS err_z,
-           CAST(rave_obs_id AS VARCHAR(32)) AS flag_raw
+           CAST(rave_obs_id AS VARCHAR(32)) AS flag_raw, {_RAVE_ID_COLS}
     FROM external.ravedr6
     WHERE 1=CONTAINS(
         POINT('ICRS', external.ravedr6.ra_input, external.ravedr6.dec_input),
@@ -464,9 +546,18 @@ def _external_rvs_from_unified_rows(
     dec_deg: float | None = None,
 ) -> list:
     external_rvs = []
+    lamost: dict[str, list] = {"LAMOST_LRS": [], "LAMOST_MRS": []}
+    other: list = []
     for r in rows:
         cat = str(r.get("ext_cat", "") or "")
-        obs_str = r.get("obs_str")
+        (lamost[cat] if cat in lamost else other).append(r)
+    ordered = (
+        _collapse_lamost_rows(lamost["LAMOST_LRS"])
+        + _collapse_lamost_rows(lamost["LAMOST_MRS"])
+        + other
+    )
+    for r in ordered:
+        cat = str(r.get("ext_cat", "") or "")
         z = r.get("rv_z")
         z_err = r.get("err_z")
         flag = str(r.get("flag_raw", "") or "")
@@ -479,16 +570,10 @@ def _external_rvs_from_unified_rows(
                     if z_err is not None and np.isfinite(float(z_err))
                     else 0.0
                 )
-                t = 0.0
-                if obs_str and str(obs_str).strip():
-                    try:
-                        t = Time(str(obs_str).strip(), format="isot", scale="utc").mjd
-                    except Exception:
-                        t = 0.0
                 rec = finalize_external_rv_record(
                     {
                         "telescope": "LAMOST_LRS",
-                        "mjd": t,
+                        "mjd": float(r["mjd"]),
                         "rv": rv,
                         "rv_err": err,
                         "flag": "z_meas",
@@ -503,12 +588,6 @@ def _external_rvs_from_unified_rows(
         elif cat == "LAMOST_MRS":
             rv = float(z) if z is not None and np.isfinite(float(z)) else np.nan
             if np.isfinite(rv):
-                t = 0.0
-                if obs_str and str(obs_str).strip():
-                    try:
-                        t = Time(str(obs_str).strip(), format="isot", scale="utc").mjd
-                    except Exception:
-                        t = 0.0
                 err = (
                     float(z_err)
                     if z_err is not None and np.isfinite(float(z_err))
@@ -517,7 +596,7 @@ def _external_rvs_from_unified_rows(
                 rec = finalize_external_rv_record(
                     {
                         "telescope": "LAMOST_MRS",
-                        "mjd": t,
+                        "mjd": float(r["mjd"]),
                         "rv": rv,
                         "rv_err": err,
                         "flag": flag,
