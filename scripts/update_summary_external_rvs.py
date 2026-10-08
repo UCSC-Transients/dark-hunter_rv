@@ -222,6 +222,9 @@ def main() -> int:
                     for r in tap_rows
                     if any(str(r.get("telescope", "")).startswith(p) for p in prefixes)
                 ]
+                if not src_rows:
+                    _log(f"Gaia_DR3_{sid}: no {src} rows returned; keeping existing {src} rows")
+                    continue
                 merged = _merge_source_rows(merged, src_rows, src)
 
         replace_external_rv_section_in_summary(summ, merged)

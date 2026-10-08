@@ -45,9 +45,11 @@ python3 scripts/update_summary_desi_rvs.py --star-id 1551542027851147904
 | APOGEE DR17 | VizieR `III/286/catalog` + `allvis` (`VHelio`, `Tel`) | Barycentric | `APOGEE_APO` / `APOGEE_LCO` | `MJD` | ~0.1 km/s |
 | Gaia-ESO DR5.1 | ESO archive only (not on VizieR TAP) | Barycentric | `GES_VLT` | `DATE_OBS` | 0.2–0.4 km/s |
 | DESI MWS DR1 | NOIRLab Data Lab `desi_dr1.mws` | Heliocentric | `DESI` | `min_mjd`/`max_mjd` | ~1 km/s |
-| LAMOST LRS DR9 | Gaia `external.lamost_dr9_lrs` | Heliocentric (`z`) | `LAMOST` | `obsdate` | variable |
-| LAMOST MRS DR9 | Gaia `external.lamost_dr9_mrs` | Barycentric (`rv_br1`) | `LAMOST` | `obsdate` | ~1 km/s |
+| LAMOST LRS DR9 | Gaia `external.lamost_dr9_lrs` | Heliocentric (`z`) | `LAMOST` | `obsdate` → local midnight (UTC+8), ±0.25 d | variable |
+| LAMOST MRS DR9 | Gaia `external.lamost_dr9_mrs` | Barycentric (`rv_br1`) | `LAMOST` | mean single-exposure `lmjm` (UTC+8) | ~1 km/s |
 | RAVE DR6 | Gaia `external.ravedr6` | Heliocentric | `RAVE` | `rave_obs_id` date | ~1 km/s |
+
+**LAMOST MRS rows:** the archive lists each spectrum once per band (B, R) with the same `rv_br1`, and each night as a coadd (`coadd=1`) plus its ~20-minute single exposures (`coadd=0`). Ingest keeps one coadd per `obsid` (single exposures only when no coadd exists). Refresh old summaries with `python scripts/update_summary_external_rvs.py --sources lamost`.
 
 **Not used:** Gaia DR3 mission-mean `radial_velocity` (no per-epoch MJD; may blend epochs).
 
